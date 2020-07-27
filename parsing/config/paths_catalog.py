@@ -11,10 +11,26 @@ class DatasetCatalog(object):
             'img_dir': 'wireframe/images',
             'ann_file': 'wireframe/train.json',
         },
+        'road_train': {
+            'img_dir': 'road/images',
+            'ann_file': 'road/train.json',
+        }, 
+        'building_train': {
+            'img_dir': 'building/images',
+            'ann_file': 'building/train.json',
+        }, 
         'wireframe_test': {
             'img_dir': 'wireframe/images',
             'ann_file': 'wireframe/test.json',
         },
+        'road_test': {
+            'img_dir': 'road/images',
+            'ann_file': 'road/test.json',
+        }, 
+        'building_test': {
+            'img_dir': 'building/images',
+            'ann_file': 'building/test.json',
+        }, 
         'york_test': {
             'img_dir': 'york/images',
             'ann_file': 'york/test.json',

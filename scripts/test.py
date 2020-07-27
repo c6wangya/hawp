@@ -63,13 +63,18 @@ def test(cfg):
                 output = to_device(output,'cpu')
         
             if args.display:
+                threshold = 0.05
                 im = dataset.dataset.image(i)
                 plt.imshow(im)
                 lines = output['lines_pred'].numpy()
                 scores = output['lines_score'].numpy()
-                plt.plot([lines[scores>0.97,0],lines[scores>0.97,2]],
-                        [lines[scores>0.97,1],lines[scores>0.97,3]], 'r-')
+                plt.plot([lines[scores>threshold,0],lines[scores>threshold,2]],
+                        [lines[scores>threshold,1],lines[scores>threshold,3]], 'r-')
+                import pathlib
+                pathlib.Path("./test_results/road_t{}".format(int(threshold * 100), i)).mkdir(parents=True, exist_ok=True)
+                plt.savefig("./test_results/road_t{}/test_{}.png".format(int(threshold * 100), i))
                 plt.show()
+                plt.close('all')
 
             for k in output.keys():
                 if isinstance(output[k], torch.Tensor):

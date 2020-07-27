@@ -3,9 +3,9 @@ from yacs.config import CfgNode as CN
 # Dataset options
 # ---------------------------------------------------------------------------- #
 DATASETS = CN()
-DATASETS.TRAIN = ("wireframe_train",)
-DATASETS.VAL   = ("wireframe_test",)
-DATASETS.TEST  = ("wireframe_test",)
+DATASETS.TRAIN = ("road_train",)
+DATASETS.VAL   = ("road_test",)
+DATASETS.TEST  = ("road_test",)
 DATASETS.IMAGE = CN()
 DATASETS.IMAGE.HEIGHT = 512
 DATASETS.IMAGE.WIDTH  = 512
