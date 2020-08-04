@@ -19,6 +19,10 @@ class DatasetCatalog(object):
             'img_dir': 'building/images',
             'ann_file': 'building/train.json',
         }, 
+        'building_256_train': {
+            'img_dir': 'building_patches-256/images',
+            'ann_file': 'building_patches-256/train.json',
+        }, 
         'wireframe_test': {
             'img_dir': 'wireframe/images',
             'ann_file': 'wireframe/test.json',
@@ -31,6 +35,10 @@ class DatasetCatalog(object):
             'img_dir': 'building/images',
             'ann_file': 'building/test.json',
         }, 
+        'building_256_test': {
+            'img_dir': 'building_patches-256/images',
+            'ann_file': 'building_patches-256/test.json',
+        },
         'york_test': {
             'img_dir': 'york/images',
             'ann_file': 'york/test.json',
@@ -49,7 +57,7 @@ class DatasetCatalog(object):
         )
 
         if 'train' in name:
-            return dict(factory="TrainDataset",args=args)
+            return dict(factory="HRJDataset",args=args)
         if 'test' in name and 'ann_file' in attrs:
             return dict(factory="TestDatasetWithAnnotations",
                         args=args)

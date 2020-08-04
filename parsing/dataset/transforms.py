@@ -16,6 +16,7 @@ class Compose(object):
         for t in self.transforms:
             image, ann = t(image, ann)
         return image, ann
+
 class Resize(object):
     def __init__(self, image_height, image_width, ann_height, ann_width):
         self.image_height = image_height
@@ -43,6 +44,17 @@ class ResizeImage(object):
     def __call__(self, image, ann=None):
         image = resize(image,(self.image_height,self.image_width))
         image = np.array(image,dtype=np.float32)/255.0
+        if ann is None:
+            return image
+        return image, ann
+
+class ResizeTarget(object):
+    def __init__(self, image_height, image_width):
+        self.image_height = image_height
+        self.image_width  = image_width
+
+    def __call__(self, image, ann=None):
+        image = resize(image,(self.image_height,self.image_width))
         if ann is None:
             return image
         return image, ann

@@ -3,12 +3,12 @@ from yacs.config import CfgNode as CN
 # Dataset options
 # ---------------------------------------------------------------------------- #
 DATASETS = CN()
-DATASETS.TRAIN = ("road_train",)
-DATASETS.VAL   = ("road_test",)
-DATASETS.TEST  = ("road_test",)
+DATASETS.TRAIN = ("building_256_train",)
+DATASETS.VAL   = ("building_256_test",)
+DATASETS.TEST  = ("building_256_test",)
 DATASETS.IMAGE = CN()
-DATASETS.IMAGE.HEIGHT = 512
-DATASETS.IMAGE.WIDTH  = 512
+DATASETS.IMAGE.HEIGHT = 256
+DATASETS.IMAGE.WIDTH  = 256
 
 DATASETS.IMAGE.PIXEL_MEAN = [109.730, 103.832, 98.681]
 DATASETS.IMAGE.PIXEL_STD  = [22.275, 22.124, 23.229]

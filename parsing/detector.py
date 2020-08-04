@@ -37,18 +37,28 @@ def get_junctions(jloc, joff, topk = 300, th=0):
     joff = joff.reshape(2, -1)
 
     scores, index = torch.topk(jloc, k=topk)
-    y = (index / 128).float() + torch.gather(joff[1], 0, index) + 0.5
+    y = (index / 128.).int().float() + torch.gather(joff[1], 0, index) + 0.5
     x = (index % 128).float() + torch.gather(joff[0], 0, index) + 0.5
 
     junctions = torch.stack((x, y)).t()
 
     return junctions[scores>th], scores[scores>th]
 
+class RFJunctionDetector(nn.Module):
+    def __init__(self, cfg, test_info=""):
+        super(RFJunctionDetector, self).__init__()
+        self.backbone = build_backbone(cfg, 'Refinenet')
+
+    def forward(self, images):
+        junc_pred = self.backbone(images)
+        return junc_pred
+
+
 class WireframeDetector(nn.Module):
-    def __init__(self, cfg):
+    def __init__(self, cfg, test_info=""):
         super(WireframeDetector, self).__init__()
         self.hafm_encoder = HAFMencoder(cfg)
-        self.backbone = build_backbone(cfg)
+        self.backbone = build_backbone(cfg, 'Hourglass')
 
         self.n_dyn_junc = cfg.MODEL.PARSING_HEAD.N_DYN_JUNC
         self.n_dyn_posl = cfg.MODEL.PARSING_HEAD.N_DYN_POSL
@@ -62,6 +72,10 @@ class WireframeDetector(nn.Module):
         self.n_out_junc = cfg.MODEL.PARSING_HEAD.N_OUT_JUNC
         self.n_out_line = cfg.MODEL.PARSING_HEAD.N_OUT_LINE
         self.use_residual = cfg.MODEL.PARSING_HEAD.USE_RESIDUAL
+
+        # flags for intermediate results
+        self.test_info = test_info
+
         # self.
         self.register_buffer('tspan', torch.linspace(0, 1, self.n_pts0)[None,None,:].cuda())
         self.loss = nn.BCEWithLogitsLoss(reduction='none')
@@ -92,7 +106,6 @@ class WireframeDetector(nn.Module):
         xp = ((features_per_image[:, py0l, px0l] * (py1-py) * (px1 - px)+ features_per_image[:, py1l, px0l] * (py - py0) * (px1 - px)+ features_per_image[:, py0l, px1l] * (py1 - py) * (px - px0)+ features_per_image[:, py1l, px1l] * (py - py0) * (px - px0)).reshape(128,-1,32)
         ).permute(1,0,2)
 
-
         # if self.pool1d is not None:
         xp = self.pool1d(xp)
         features_per_line = xp.view(-1, self.n_pts1*self.dim_loi)
@@ -118,6 +131,7 @@ class WireframeDetector(nn.Module):
         extra_info['time_backbone'] = time.time()
         outputs, features = self.backbone(images)
 
+        # backbone features
         loi_features = self.fc1(features)
         output = outputs[0]
         md_pred = output[:,:3].sigmoid()
@@ -141,9 +155,19 @@ class WireframeDetector(nn.Module):
         jloc_pred_nms = non_maximum_suppression(jloc_pred[0])
         topK = min(300, int((jloc_pred_nms>0.008).float().sum().item()))
 
-        juncs_pred, _ = get_junctions(non_maximum_suppression(jloc_pred[0]),joff_pred[0], topk=topK)
+        # proposed junctions
+        juncs_pred, _ = get_junctions(jloc_pred_nms, joff_pred[0], topk=topK)
         extra_info['time_proposal'] = time.time() - extra_info['time_proposal']
         extra_info['time_matching'] = time.time()
+
+        if self.test_info == "junc":
+            sx = annotations[0]['width']/output.size(3)
+            sy = annotations[0]['height']/output.size(2)
+
+            juncs_pred[:,0] *= sx
+            juncs_pred[:,1] *= sy
+            return juncs_pred, None
+        # junction <-> line segs matching
         dis_junc_to_end1, idx_junc_to_end1 = torch.sum((lines_pred[:,:2]-juncs_pred[:,None])**2,dim=-1).min(0)
         dis_junc_to_end2, idx_junc_to_end2 = torch.sum((lines_pred[:,2:] - juncs_pred[:, None]) ** 2, dim=-1).min(0)
 
@@ -152,6 +176,19 @@ class WireframeDetector(nn.Module):
        
         iskeep = (idx_junc_to_end_min < idx_junc_to_end_max)# * (dis_junc_to_end1< 10*10)*(dis_junc_to_end2<10*10)  # *(dis_junc_to_end2<100)
 
+        if self.test_info == "ls":
+            lines_pred = lines_pred[iskeep, :]
+            scores = self.pooling(loi_features[0],lines_pred).sigmoid()  # Verification (FC)
+            lines_pred = lines_pred[scores>0.995, :]
+            sx = annotations[0]['width']/output.size(3)
+            sy = annotations[0]['height']/output.size(2)
+
+            lines_pred[:,0] *= sx
+            lines_pred[:,1] *= sy
+            lines_pred[:,2] *= sx
+            lines_pred[:,3] *= sy
+            return lines_pred, None
+
         idx_lines_for_junctions = torch.unique(
             torch.cat((idx_junc_to_end_min[iskeep,None],idx_junc_to_end_max[iskeep,None]),dim=1),
             dim=0)
@@ -159,7 +196,7 @@ class WireframeDetector(nn.Module):
         extra_info['time_matching'] = time.time() - extra_info['time_matching']
 
         extra_info['time_verification'] = time.time()
-        scores = self.pooling(loi_features[0],lines_adjusted).sigmoid()
+        scores = self.pooling(loi_features[0],lines_adjusted).sigmoid()  # Verification (FC)
 
         lines_final = lines_adjusted[scores>0.05]
         score_final = scores[scores>0.05]

@@ -1,5 +1,6 @@
 from .registry import MODELS
 from .stacked_hg import HourglassNet, Bottleneck2D
+from .refinenet_deformable import RefineNetDeform
 from .multi_task_head import MultitaskHead
 
 @MODELS.register("Hourglass")
@@ -29,9 +30,18 @@ def build_hg(cfg):
 
     return model
 
+@MODELS.register("Refinenet")
+def build_rf(cfg):
+    model = RefineNetDeform(1)
+    model.out_feature_channels = 1
+    return model
 
-def build_backbone(cfg):
+def build_backbone(cfg, type=None):
     assert cfg.MODEL.NAME in MODELS,  \
         "cfg.MODELS.NAME: {} is not registered in registry".format(cfg.MODELS.NAME)
-
-    return MODELS[cfg.MODEL.NAME](cfg)
+    if type is None:
+        return MODELS[cfg.MODEL.NAME](cfg)
+    elif type == 'Refinenet':
+        return MODELS["Refinenet"](cfg)
+    else:
+        return MODELS["Hourglass"](cfg)

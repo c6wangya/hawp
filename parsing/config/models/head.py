@@ -23,6 +23,9 @@ PARSING_HEAD.USE_RESIDUAL = True
 PARSING_HEAD.N_OUT_JUNC = 250
 PARSING_HEAD.N_OUT_LINE = 2500
 
+PARSING_HEAD.RAW_JUNCS = False
+PARSING_HEAD.RAW_LS = False
+
 #INFERENCE FLAGS
 #0, only use junctions to yield line segments
 #1, only use learned angles to yield line segments

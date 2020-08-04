@@ -1,8 +1,7 @@
 import torch
 from .transforms import *
-from . import train_dataset
+from . import train_dataset, HRJ_dataset, HRJ_test_dataset, test_dataset
 from parsing.config.paths_catalog import DatasetCatalog
-from . import test_dataset
 
 def build_transform(cfg):
     transforms = Compose(
@@ -20,22 +19,22 @@ def build_train_dataset(cfg):
     name = cfg.DATASETS.TRAIN[0]
     dargs = DatasetCatalog.get(name)
 
-    factory = getattr(train_dataset,dargs['factory'])
+    factory = getattr(HRJ_dataset,dargs['factory'])
     args = dargs['args']
     args['transform'] = Compose(
-                                [Resize(cfg.DATASETS.IMAGE.HEIGHT,
-                                        cfg.DATASETS.IMAGE.WIDTH,
-                                        cfg.DATASETS.TARGET.HEIGHT,
-                                        cfg.DATASETS.TARGET.WIDTH),
+                                [ResizeImage(cfg.DATASETS.IMAGE.HEIGHT,
+                                        cfg.DATASETS.IMAGE.WIDTH),
                                  ToTensor(),
                                  Normalize(cfg.DATASETS.IMAGE.PIXEL_MEAN,
                                            cfg.DATASETS.IMAGE.PIXEL_STD,
                                            cfg.DATASETS.IMAGE.TO_255)])
+    args['transform_target'] = Compose(
+                                [ToTensor()])
     dataset = factory(**args)
     
     dataset = torch.utils.data.DataLoader(dataset,
                                           batch_size=cfg.SOLVER.IMS_PER_BATCH,
-                                          collate_fn=train_dataset.collate_fn,
+                                          collate_fn=HRJ_dataset.collate_fn,
                                           shuffle = True,
                                           num_workers = cfg.DATALOADER.NUM_WORKERS)
     return dataset
@@ -61,6 +60,40 @@ def build_test_dataset(cfg):
         dataset = torch.utils.data.DataLoader(
             dataset,  batch_size = 1,
             collate_fn = dataset.collate_fn,
+            num_workers = cfg.DATALOADER.NUM_WORKERS,
+        )
+        datasets.append((name,dataset))
+    return datasets
+
+def build_hrj_test_dataset(cfg):
+    transforms = Compose(
+        [ResizeImage(cfg.DATASETS.IMAGE.HEIGHT,
+                     cfg.DATASETS.IMAGE.WIDTH),
+         ToTensor(),
+         Normalize(cfg.DATASETS.IMAGE.PIXEL_MEAN,
+                                           cfg.DATASETS.IMAGE.PIXEL_STD,
+                                           cfg.DATASETS.IMAGE.TO_255)
+        ]
+    )
+    transforms_target = Compose(
+        [
+            ResizeTarget(cfg.DATASETS.IMAGE.HEIGHT,
+                     cfg.DATASETS.IMAGE.WIDTH),
+            ToTensor()
+        ]
+    )
+
+    datasets = []
+    for name in cfg.DATASETS.TEST:
+        dargs = DatasetCatalog.get(name)
+        factory = HRJ_test_dataset.HRJTestDataset
+        args = dargs['args']
+        args['transform'] = transforms
+        args['transform_target'] = transforms_target
+        dataset = factory(**args)
+        dataset = torch.utils.data.DataLoader(
+            dataset,  batch_size = 1,
+            collate_fn = HRJ_dataset.collate_fn,
             num_workers = cfg.DATALOADER.NUM_WORKERS,
         )
         datasets.append((name,dataset))

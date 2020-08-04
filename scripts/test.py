@@ -16,6 +16,7 @@ import argparse
 import logging
 import matplotlib.pyplot as plt
 from tqdm import tqdm
+import pathlib
 import json
 parser = argparse.ArgumentParser(description='HAWP Testing')
 
@@ -70,8 +71,7 @@ def test(cfg):
                 scores = output['lines_score'].numpy()
                 plt.plot([lines[scores>threshold,0],lines[scores>threshold,2]],
                         [lines[scores>threshold,1],lines[scores>threshold,3]], 'r-')
-                import pathlib
-                pathlib.Path("./test_results/road_t{}".format(int(threshold * 100), i)).mkdir(parents=True, exist_ok=True)
+                pathlib.Path("./test_results/road_t{}".format(int(threshold * 100)).mkdir(parents=True, exist_ok=True)
                 plt.savefig("./test_results/road_t{}/test_{}.png".format(int(threshold * 100), i))
                 plt.show()
                 plt.close('all')
