@@ -482,7 +482,7 @@ at::Tensor DeformConv2d_forward_cuda(
   out.copy_(out_buf);
   out = out.view({batch_sz, out_channels, out_h, out_w});
 
-  if (bias.dim() == 0) {
+  if (bias.dim() != 0) {
     return out + bias.view({1, out_channels, 1, 1});
   }
   return out;

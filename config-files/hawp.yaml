@@ -1,5 +1,5 @@
 SOLVER:
-  IMS_PER_BATCH: 16
+  IMS_PER_BATCH: 2
   BASE_LR: 0.0004
   MAX_EPOCH: 100
   STEPS: (25,)
@@ -16,10 +16,10 @@ DATASETS:
     PIXEL_STD: [22.275, 22.124, 23.229]
     TO_255: True
 
-  TEST: ("road_test", )
+  TEST: ("building_test", )
 
 MODEL:
-  NAME: "Hourglass"
+  NAME: "Refinenet"
   HEAD_SIZE: [[3], [1], [1], [2], [2]] #Order: ang, dis, dis_residual, jloc, joff
   OUT_FEATURE_CHANNELS: 256
   HGNETS:
@@ -43,6 +43,8 @@ MODEL:
     DIM_FC: 1024
     N_OUT_JUNC: 250
     N_OUT_LINE: 2500
+    RAW_JUNCS: False
+    RAW_LS: False
   
   LOSS_WEIGHTS:
     loss_md: 1.0 # angle regression

@@ -4,7 +4,7 @@ import numpy as np
 
 from parsing.config import cfg
 from parsing.utils.comm import to_device
-from parsing.dataset import build_train_dataset
+from parsing.dataset import build_building_train_dataset
 from parsing.detector import RFJunctionDetector
 from parsing.solver import make_lr_scheduler, make_optimizer
 from parsing.utils.logger import setup_logger
@@ -18,7 +18,7 @@ import argparse
 import logging
 import pickle
 
-def train_rf():
+def train_building():
     parser = argparse.ArgumentParser()
     parser.add_argument("--config-file",
                         metavar="FILE",
@@ -42,7 +42,7 @@ def train_rf():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     model = RFJunctionDetector(cfg).to(device)
-    train_dataset = build_train_dataset(cfg)
+    train_dataset = build_building_train_dataset(cfg)
     if args.checkpoint and not args.resume_train:
         checkpoint = torch.load(args.checkpoint)
         filtered_weights = {
@@ -83,7 +83,7 @@ def train_rf():
     for epoch in range(1000):
         for it, (images, target) in enumerate(train_dataset):
             images = images.to(device)
-            target = target.to(device)
+            target = target.float().to(device)
             
             # import matplotlib.pyplot as plt
             # fig = plt.figure(figsize=(8, 16))
@@ -129,4 +129,4 @@ def train_rf():
 
 
 if __name__ == "__main__":
-    train_rf()
+    train_building()

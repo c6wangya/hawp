@@ -53,7 +53,6 @@ class RFJunctionDetector(nn.Module):
         junc_pred = self.backbone(images)
         return junc_pred
 
-
 class WireframeDetector(nn.Module):
     def __init__(self, cfg, test_info=""):
         super(WireframeDetector, self).__init__()
