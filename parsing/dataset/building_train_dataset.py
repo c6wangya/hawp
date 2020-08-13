@@ -14,6 +14,7 @@ import matplotlib.pyplot as plt
 from torchvision.transforms import functional as F
 import copy
 import glob
+import scipy
 
 class BuildingTrainDataset(Dataset):
     def __init__(self, root, transform = None, transform_target = None):
@@ -32,7 +33,11 @@ class BuildingTrainDataset(Dataset):
         idx = idx_ % len(self.images.keys())
         file_name = list(self.images.keys())[idx]
         image = io.imread(self.images[file_name]).astype(float)[:,:,:3]
-        target = io.imread(self.labels[file_name]).astype(float)[:,:,:1]
+        # target = scipy.misc.imread(self.labels[file_name])
+        target = io.imread(self.labels[file_name], as_gray=True).round().astype(float)
+
+        # target = np.concatenate((target, 1 - target), axis=-1)
+        
         if self.transform is not None:
             return self.transform(image), self.transform_target(target)
         return image, target

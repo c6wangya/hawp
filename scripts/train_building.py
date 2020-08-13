@@ -74,8 +74,8 @@ def train_building():
         if args.checkpoint:
             scaler.load_state_dict(checkpoint["scaler_state_dict"])
 
-    # loss_fn = torch.nn.CrossEntropyLoss()
-    loss_fn = torch.nn.MSELoss(reduce=True, size_average=True)
+    loss_fn = torch.nn.CrossEntropyLoss()
+    # loss_fn = torch.nn.MSELoss(reduce=True, size_average=True)
 
     total_loss = 0.0
     t = 0 if not args.resume_train else checkpoint["iter"]
@@ -83,7 +83,7 @@ def train_building():
     for epoch in range(1000):
         for it, (images, target) in enumerate(train_dataset):
             images = images.to(device)
-            target = target.float().to(device)
+            target = target.to(device).long()
             
             # import matplotlib.pyplot as plt
             # fig = plt.figure(figsize=(8, 16))
@@ -99,7 +99,7 @@ def train_building():
                     loss = loss_fn(y, target.half())
             else:
                 y = model(images)
-                loss = loss_fn(y, target)
+                loss = loss_fn(y, target.squeeze(1))
 
             total_loss += loss.item()
             if (t + 1) % 100 == 0:

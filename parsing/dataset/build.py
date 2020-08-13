@@ -100,7 +100,7 @@ def build_hrj_test_dataset(cfg):
     return datasets
 
 def build_building_train_dataset(cfg):
-    args = {'root': './data/building_patches-raster/'}
+    args = {'root': './data/building_patches-raster-128/'}
     args['transform'] = Compose(
                                 [
                                     ResizeImage(cfg.DATASETS.IMAGE.HEIGHT,
