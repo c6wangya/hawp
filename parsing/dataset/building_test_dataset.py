@@ -36,6 +36,9 @@ class BuildingTestDataset(Dataset):
             return self.transform(image), self.transform_target(target)
         return image, target
 
+    def filename(self, idx_):
+        return list(self.images.keys())[idx_]
+
     def __len__(self):
         return len(self.images.keys())
 

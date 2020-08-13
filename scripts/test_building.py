@@ -103,7 +103,7 @@ def test_building():
             save_dir = "./deform_attn_test/base_20k/"
             if not os.path.exists(save_dir):
                 os.makedirs(save_dir)
-            plt.savefig(save_dir + "{}.png".format(i))
+            plt.savefig(save_dir + "{}.png".format(test_dataset.dataset.filename(i)))
     
         # if args.display:
         #     fig = plt.figure(figsize=(32, 24))
