@@ -16,10 +16,13 @@ import datetime
 import argparse
 import logging
 import matplotlib.pyplot as plt
+import torch.nn.functional as F
 from tqdm import tqdm
 import json
 from matplotlib.patches import Circle
 import pathlib
+import numpy as np
+
 parser = argparse.ArgumentParser(description='HAWP Testing')
 
 parser.add_argument("--config-file",
@@ -39,6 +42,12 @@ parser.add_argument("--checkpoint",type=str, required=True,
                     help="checkpoint directory")
 
 args = parser.parse_args()
+
+def enhance(a):
+    weight = torch.ones(1, 1, 3, 3)
+    a = a.unsqueeze(0).unsqueeze(1).float()
+    a = F.conv2d(a, weight, stride=1, padding=1)
+    return a.squeeze()
 
 def test(cfg, impath):
     logger = logging.getLogger("hawp.testing")
@@ -83,6 +92,24 @@ def test(cfg, impath):
         plt.show()
         plt.close('all')
     if args.info == "ls":
+        fig = plt.figure(figsize=(24, 24))
+        fig.add_subplot(1, 1, 1)
+        dis0_points = output.numpy()
+        image_copy = torch.from_numpy(image.copy())
+        points_map = np.zeros((image.shape[0], image.shape[1]))
+        for x, y in zip(dis0_points[:, 1], dis0_points[:, 0]):
+            points_map[round(x), round(y)] = 255
+        points_map = torch.from_numpy(points_map)
+        points_map = enhance(points_map)
+        bool_map = (points_map == 0).int()
+        image_copy[:, :, 0] = image_copy[:, :, 0] * bool_map
+        image_copy[:, :, 1] = image_copy[:, :, 1] * bool_map
+        image_copy[:, :, 2] = image_copy[:, :, 2] * bool_map
+        image_copy[:, :, 0] = image_copy[:, :, 0] + points_map.to(torch.uint8)
+
+        plt.imshow(image_copy)
+        plt.show()
+
         lines = output.numpy()
         plt.figure(figsize=(6,6))    
         plt.subplots_adjust(top = 1, bottom = 0, right = 1, left = 0, 

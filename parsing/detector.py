@@ -176,6 +176,14 @@ class WireframeDetector(nn.Module):
         iskeep = (idx_junc_to_end_min < idx_junc_to_end_max)# * (dis_junc_to_end1< 10*10)*(dis_junc_to_end2<10*10)  # *(dis_junc_to_end2<100)
 
         if self.test_info == "ls":
+            dis0_points = self.propose_raw_distance_map(md_pred[0], dis_pred[0], res_pred[0]).view(-1, 2)
+            sx = annotations[0]['width']/output.size(3)
+            sy = annotations[0]['height']/output.size(2)
+            dis0_points[:, 0] *= sx
+            dis0_points[:, 1] *= sy
+            
+            return dis0_points, None
+
             lines_pred = lines_pred[iskeep, :]
             scores = self.pooling(loi_features[0],lines_pred).sigmoid()  # Verification (FC)
             lines_pred = lines_pred[scores>0.995, :]
@@ -398,6 +406,34 @@ class WireframeDetector(nn.Module):
         lines = torch.stack((x_st_final,y_st_final,x_ed_final,y_ed_final)).permute((1,2,0))
 
         return  lines#, normals
+
+    def propose_raw_distance_map(self, md_maps, dis_maps, residual_maps, scale=5.0):
+        device = md_maps.device
+        height, width = md_maps.size(1), md_maps.size(2)
+        sign_pad = torch.tensor([-1,0,1],device=device,dtype=torch.float32).reshape(3,1,1)
+
+        if residual_maps is None:
+            dis_maps_new = dis_maps.repeat((1,1,1))
+        else:
+            dis_maps_new = dis_maps.repeat((3,1,1))+sign_pad*residual_maps.repeat((3,1,1))
+
+        _y = torch.arange(0, height, device=device).float()
+        _x = torch.arange(0, width, device=device).float()
+
+        y0,x0 = torch.meshgrid(_y,_x)
+        md_ = (md_maps[0]-0.5)*np.pi*2
+
+        cs_md = torch.cos(md_)
+        ss_md = torch.sin(md_)
+
+        x_rotated = cs_md[None]*dis_maps_new*scale
+        y_rotated = ss_md[None]*dis_maps_new*scale
+
+        x_final = (x_rotated + x0[None]).clamp(min=0,max=width-1)
+        y_final = (y_rotated + y0[None]).clamp(min=0,max=height-1)
+
+        points = torch.stack((x_final, y_final)).permute((1,2,3,0))
+        return points
 
     def proposal_lines_new(self, md_maps, dis_maps, residual_maps, scale=5.0):
         """

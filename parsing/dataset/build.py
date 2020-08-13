@@ -1,6 +1,6 @@
 import torch
 from .transforms import *
-from . import train_dataset, HRJ_dataset, HRJ_test_dataset, test_dataset, building_train_dataset
+from . import train_dataset, HRJ_dataset, HRJ_test_dataset, test_dataset, building_train_dataset, building_test_dataset
 from parsing.config.paths_catalog import DatasetCatalog
 
 def build_transform(cfg):
@@ -122,5 +122,31 @@ def build_building_train_dataset(cfg):
                                           batch_size=cfg.SOLVER.IMS_PER_BATCH,
                                           collate_fn=building_train_dataset.collate_fn,
                                           shuffle = True,
+                                          num_workers = cfg.DATALOADER.NUM_WORKERS)
+    return dataset
+
+def build_building_test_dataset(cfg):
+    args = {'root': './data/building_patches-raster/'}
+    args['transform'] = Compose(
+                                [
+                                    ResizeImage(cfg.DATASETS.IMAGE.HEIGHT,
+                                        cfg.DATASETS.IMAGE.WIDTH),
+                                    ToTensor(),
+                                    Normalize(cfg.DATASETS.IMAGE.PIXEL_MEAN,
+                                            cfg.DATASETS.IMAGE.PIXEL_STD,
+                                            cfg.DATASETS.IMAGE.TO_255)
+                                ])
+    args['transform_target'] = Compose(
+                                [
+                                    ResizeTarget(cfg.DATASETS.IMAGE.HEIGHT,
+                                        cfg.DATASETS.IMAGE.WIDTH),
+                                    ToTensor()
+                                ])
+
+    dataset = building_test_dataset.BuildingTestDataset(**args)
+    
+    dataset = torch.utils.data.DataLoader(dataset,
+                                          batch_size=1,
+                                          collate_fn=building_test_dataset.collate_fn,
                                           num_workers = cfg.DATALOADER.NUM_WORKERS)
     return dataset
