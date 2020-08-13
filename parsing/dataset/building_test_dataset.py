@@ -21,7 +21,6 @@ class BuildingTestDataset(Dataset):
         self.transform = transform
         self.transform_target = transform_target
         image_files = glob.glob(root + '/test_images/*')
-        random.shuffle(image_files)
         self.images = {fpth.split('/')[-1][:-4]: fpth for fpth in image_files}
         label_files = glob.glob(root + '/test_labels/*')
         self.labels = {fpth.split('/')[-1][:-4]: fpth for fpth in label_files}
