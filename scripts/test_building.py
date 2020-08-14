@@ -90,11 +90,11 @@ def test_building():
             plt.title('original image')
             # 02 prediction
             fig.add_subplot(1, 3, 2)
-            plt.imshow((output * 255 / output.max()).int().permute(1, 2, 0))
+            plt.imshow((output[1, :, :] * 255 / output[1, :, :].max()).int(), cmap='gray', vmin=0, vmax=255)
             plt.title('prediction heatmap')
             # 03 gt
             fig.add_subplot(1, 3, 3)
-            plt.imshow((target * 255 / target.max()).int().permute(1, 2, 0))
+            plt.imshow((target * 255 / target.max()).int().permute(1, 2, 0), cmap='gray', vmin=0, vmax=255)
             plt.title('ground truth')
 
             # plt.show()
