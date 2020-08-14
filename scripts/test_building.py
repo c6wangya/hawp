@@ -90,7 +90,7 @@ def test_building():
             plt.title('original image')
             # 02 prediction
             fig.add_subplot(1, 3, 2)
-            plt.imshow((output * 255 / output.max()).int().permute(1, 2, 0))
+            plt.imshow((output[0] * 255 / output[0].max()).int().permute(1, 2, 0))
             plt.title('prediction heatmap')
             # 03 gt
             fig.add_subplot(1, 3, 3)
