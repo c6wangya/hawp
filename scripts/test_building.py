@@ -74,8 +74,11 @@ def test_building():
     #                                      logger=logger)
     # _ = checkpointer.load()
     # hawp_model = hawp_model.eval()
+    softmax_fn = torch.nn.Softmax(dim=0)
 
     for i, (images, target) in enumerate(tqdm(test_dataset)):
+        # if test_dataset.dataset.filename(i) != 'building-180721-10001.21.27_pos_p655':
+        #     continue
         with torch.no_grad():
             output = model(images.to(device))
             output = to_device(output,'cpu').squeeze(dim=0)
@@ -83,6 +86,7 @@ def test_building():
         target = target.squeeze(dim=0)
 
         if args.display:
+            output = softmax_fn(output)
             fig = plt.figure(figsize=(24, 8))
             # 01 origin
             fig.add_subplot(1, 3, 1)
@@ -90,21 +94,21 @@ def test_building():
             plt.title('original image')
             # 02 prediction
             fig.add_subplot(1, 3, 2)
-            plt.imshow((output[0] * 255 / output[0].max()).int().permute(1, 2, 0))
+            plt.imshow((output[1, :, :] * 255 / output[1, :, :].max()).int(), cmap='gray', vmin=0, vmax=255)
             plt.title('prediction heatmap')
             # 03 gt
             fig.add_subplot(1, 3, 3)
-            plt.imshow((target * 255 / target.max()).int().permute(1, 2, 0))
+            plt.imshow((target * 255 / target.max()).int().permute(1, 2, 0), cmap='gray', vmin=0, vmax=255)
             plt.title('ground truth')
 
             # plt.show()
             if not os.path.exists("./deform_attn_test"):
                 os.makedirs("./deform_attn_test")
-            save_dir = "./deform_attn_test/base_20k/"
+            save_dir = "./deform_attn_test/base_cuda_180k/"
             if not os.path.exists(save_dir):
                 os.makedirs(save_dir)
             plt.savefig(save_dir + "{}.png".format(test_dataset.dataset.filename(i)))
-    
+            plt.cla()
         # if args.display:
         #     fig = plt.figure(figsize=(32, 24))
         #     fig.add_subplot(3, 4, 1)
