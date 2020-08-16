@@ -21,6 +21,7 @@ from tqdm import tqdm
 import json
 import matplotlib.pyplot as plt
 import torch.nn.functional as F
+import math
 
 def non_maximum_suppression(a):
     ap = F.max_pool2d(a, 3, stride=1, padding=1)
@@ -119,12 +120,14 @@ def test_building():
             fp = lambda pred, gt: (pred * (1 - gt)).sum()  # [1, 0]
             # tn = lambda pred, gt: ((1 - pred) * (1 - gt)).sum()  # [0, 0]
             fn = lambda pred, gt: ((1 - pred) * gt).sum()  # [0, 1]
-            precision = lambda pred, gt: (tp(pred, gt) / (tp(pred, gt) + fp(pred, gt))).numpy().item()
-            recall = lambda pred, gt: (tp(pred, gt) / (tp(pred, gt) + fn(pred, gt))).numpy().item()
+            precision = lambda pred, gt: (tp(pred, gt) / (tp(pred, gt) + fp(pred, gt) + 1e-10)).numpy().item()
+            recall = lambda pred, gt: (tp(pred, gt) / (tp(pred, gt) + fn(pred, gt)) + 1e-10).numpy().item()
 
             rasters = [binarize(output[1, :, :], i / 1000) for i in range(1, 1000)]
             ps = [precision(pred, target) for pred in rasters]
+            assert not any([math.isnan(p) for p in ps])
             rs = [recall(pred, target) for pred in rasters]
+            assert not any([math.isnan(r) for r in rs])
             image_json.append({
                 'filename': test_dataset.dataset.filename(i), 
                 'precision': ps, 
