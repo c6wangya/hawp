@@ -48,8 +48,9 @@ def test_building():
                         nargs=argparse.REMAINDER
                         )
     parser.add_argument("--checkpoint", help="pytorch checkpoint")
-    parser.add_argument("--hawp_checkpoint", help="pytorch checkpoint")
+    parser.add_argument("--hawp_checkpoint", help="pytorch checkpoint", default="")
     parser.add_argument("--fp16", action="store_true", help="training in fp16 mode")
+    parser.add_argument("--out_fname", help="output file name", type=str, required=True)
     args = parser.parse_args()
     cfg.merge_from_file(args.config_file)
     cfg.merge_from_list(args.opts)
@@ -60,7 +61,7 @@ def test_building():
     test_dataset = build_building_test_dataset(cfg)
     if args.checkpoint:
         checkpoint = torch.load(args.checkpoint)
-        model.load_state_dict(checkpoint['model_state_dict'], strict=False)
+        model.load_state_dict(checkpoint['model_state_dict'])
     
     model = model.eval()
 
@@ -75,6 +76,7 @@ def test_building():
     # _ = checkpointer.load()
     # hawp_model = hawp_model.eval()
     softmax_fn = torch.nn.Softmax(dim=0)
+    image_json = []
 
     for i, (images, target) in enumerate(tqdm(test_dataset)):
         # if test_dataset.dataset.filename(i) != 'building-180721-10001.21.27_pos_p655':
@@ -84,6 +86,7 @@ def test_building():
             output = to_device(output,'cpu').squeeze(dim=0)
         
         target = target.squeeze(dim=0)
+
 
         if args.display:
             output = softmax_fn(output)
@@ -104,11 +107,33 @@ def test_building():
             # plt.show()
             if not os.path.exists("./deform_attn_test"):
                 os.makedirs("./deform_attn_test")
-            save_dir = "./deform_attn_test/base_cuda_180k/"
+            save_dir = "./deform_attn_test/{}/".format(args.out_fname)
             if not os.path.exists(save_dir):
                 os.makedirs(save_dir)
             plt.savefig(save_dir + "{}.png".format(test_dataset.dataset.filename(i)))
             plt.cla()
+
+            # pr curve
+            binarize = lambda x, th: (x > th).int()
+            tp = lambda pred, gt: (pred * gt).sum()  # [1, 1]
+            fp = lambda pred, gt: (pred * (1 - gt)).sum()  # [1, 0]
+            # tn = lambda pred, gt: ((1 - pred) * (1 - gt)).sum()  # [0, 0]
+            fn = lambda pred, gt: ((1 - pred) * gt).sum()  # [0, 1]
+            precision = lambda pred, gt: (tp(pred, gt) / (tp(pred, gt) + fp(pred, gt))).numpy().item()
+            recall = lambda pred, gt: (tp(pred, gt) / (tp(pred, gt) + fn(pred, gt))).numpy().item()
+
+            rasters = [binarize(output[1, :, :], i / 1000) for i in range(1, 1000)]
+            ps = [precision(pred, target) for pred in rasters]
+            rs = [recall(pred, target) for pred in rasters]
+            image_json.append({
+                'filename': test_dataset.dataset.filename(i), 
+                'precision': ps, 
+                'recall': rs
+            })
+
+    if args.display:
+        with open('deform_attn_test/{}.json'.format(args.out_fname), 'w') as f:
+            json.dump(image_json, f)
         # if args.display:
         #     fig = plt.figure(figsize=(32, 24))
         #     fig.add_subplot(3, 4, 1)
