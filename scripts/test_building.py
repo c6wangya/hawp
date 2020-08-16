@@ -115,19 +115,18 @@ def test_building():
             plt.cla()
 
             # pr curve
+            target = target.round()
             binarize = lambda x, th: (x > th).int()
             tp = lambda pred, gt: (pred * gt).sum()  # [1, 1]
             fp = lambda pred, gt: (pred * (1 - gt)).sum()  # [1, 0]
             # tn = lambda pred, gt: ((1 - pred) * (1 - gt)).sum()  # [0, 0]
             fn = lambda pred, gt: ((1 - pred) * gt).sum()  # [0, 1]
-            precision = lambda pred, gt: (tp(pred, gt) / (tp(pred, gt) + fp(pred, gt) + 1e-10)).numpy().item()
-            recall = lambda pred, gt: (tp(pred, gt) / (tp(pred, gt) + fn(pred, gt)) + 1e-10).numpy().item()
+            precision = lambda pred, gt: (tp(pred, gt) / (tp(pred, gt) + fp(pred, gt))).numpy().item()
+            recall = lambda pred, gt: (tp(pred, gt) / (tp(pred, gt) + fn(pred, gt))).numpy().item()
 
-            rasters = [binarize(output[1, :, :], i / 1000) for i in range(1, 1000)]
-            ps = [precision(pred, target) for pred in rasters]
-            assert not any([math.isnan(p) for p in ps])
-            rs = [recall(pred, target) for pred in rasters]
-            assert not any([math.isnan(r) for r in rs])
+            rasters = {i/100: binarize(output[1, :, :], i/100) for i in range(1, 100)}
+            ps = {k: precision(v, target) for k, v in rasters.items() if not math.isnan(precision(v, target)) }
+            rs = {k: recall(v, target) for k, v in rasters.items() if not math.isnan(recall(v, target)) }
             image_json.append({
                 'filename': test_dataset.dataset.filename(i), 
                 'precision': ps, 
