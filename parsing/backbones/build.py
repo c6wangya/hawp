@@ -32,7 +32,7 @@ def build_hg(cfg):
 
 @MODELS.register("Refinenet")
 def build_rf(cfg):
-    model = RefineNetDeform(2, cuda=False)
+    model = RefineNetDeform(2, cuda=cfg.MODEL.CUDA, attn=cfg.MODEL.ATTN, attn_only=cfg.MODEL.ATTN_ONLY)
     model.out_feature_channels = 2
     return model
 
