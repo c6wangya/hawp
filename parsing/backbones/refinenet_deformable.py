@@ -7,11 +7,13 @@ from .deform_conv_v2_cpu import DeformConv2d as DC
 
 class RefineNetDeform(nn.Module):
 
-    def __init__(self, classes_num, pretrained_weights=None, cuda=True):
+    def __init__(self, classes_num, pretrained_weights=None, cuda=True, attn=False, attn_only=False):
         if cuda:
             DC_module = DCN
+            extra_args = {}
         else:
             DC_module = DC
+            extra_args = {'attn': attn, 'attn_only': attn_only}
 
         super(RefineNetDeform, self).__init__()
         self.drop = nn.Dropout(p=0.5)
@@ -48,7 +50,8 @@ class RefineNetDeform(nn.Module):
 
         self.res3a_branch2a = nn.Conv2d(256, 128, kernel_size=1, stride=2, padding=0, bias=False)
         self.bn3a_branch2a = nn.BatchNorm2d(128)
-        self.res3a_branch2b = DC_module(128, 128, kernel_size=3, stride=1, padding=1, bias=False)
+        # self.res3a_branch2b = DC_module(128, 128, kernel_size=3, stride=1, padding=1, bias=False)
+        self.res3a_branch2b = DC_module(*(128, 128), **{**{'kernel_size': 3, 'stride': 1, 'padding': 1, 'bias': False}, **extra_args})
         self.bn3a_branch2b = nn.BatchNorm2d(128)
         self.res3a_branch2c = nn.Conv2d(128, 512, kernel_size=1, stride=1, padding=0, bias=False)
         self.bn3a_branch2c = nn.BatchNorm2d(512)
@@ -56,7 +59,8 @@ class RefineNetDeform(nn.Module):
         for i in range(1, 4):
             self.__setattr__("res3b{}_branch2a".format(i), nn.Conv2d(512, 128, kernel_size=1, stride=1, padding=0, bias=False))
             self.__setattr__("bn3b{}_branch2a".format(i), nn.BatchNorm2d(128))
-            self.__setattr__("res3b{}_branch2b".format(i), DC_module(128, 128, kernel_size=3, stride=1, padding=1, bias=False))
+            # self.__setattr__("res3b{}_branch2b".format(i), DC_module(128, 128, kernel_size=3, stride=1, padding=1, bias=False))
+            self.__setattr__("res3b{}_branch2b".format(i), DC_module(*(128, 128), **{**{'kernel_size': 3, 'stride': 1, 'padding': 1, 'bias': False}, **extra_args}))
             self.__setattr__("bn3b{}_branch2b".format(i), nn.BatchNorm2d(128))
             self.__setattr__("res3b{}_branch2c".format(i), nn.Conv2d(128, 512, kernel_size=1, stride=1, padding=0, bias=False))
             self.__setattr__("bn3b{}_branch2c".format(i), nn.BatchNorm2d(512))
@@ -67,7 +71,8 @@ class RefineNetDeform(nn.Module):
 
         self.res4a_branch2a = nn.Conv2d(512, 256, kernel_size=1, stride=2, padding=0, bias=False)
         self.bn4a_branch2a = nn.BatchNorm2d(256)
-        self.res4a_branch2b = DC_module(256, 256, kernel_size=3, stride=1, padding=1, bias=False)
+        # self.res4a_branch2b = DC_module(256, 256, kernel_size=3, stride=1, padding=1, bias=False)
+        self.res4a_branch2b = DC_module(*(256, 256), **{**{'kernel_size': 3, 'stride': 1, 'padding': 1, 'bias': False}, **extra_args})
         self.bn4a_branch2b = nn.BatchNorm2d(256)
         self.res4a_branch2c = nn.Conv2d(256, 1024, kernel_size=1, stride=1, padding=0, bias=False)
         self.bn4a_branch2c = nn.BatchNorm2d(1024)
@@ -75,7 +80,8 @@ class RefineNetDeform(nn.Module):
         for i in range(1, 23):
             self.__setattr__("res4b{}_branch2a".format(i), nn.Conv2d(1024, 256, kernel_size=1, stride=1, padding=0, bias=False))
             self.__setattr__("bn4b{}_branch2a".format(i), nn.BatchNorm2d(256))
-            self.__setattr__("res4b{}_branch2b".format(i), DC_module(256, 256, kernel_size=3, stride=1, padding=1, bias=False))
+            # self.__setattr__("res4b{}_branch2b".format(i), DC_module(256, 256, kernel_size=3, stride=1, padding=1, bias=False))
+            self.__setattr__("res4b{}_branch2b".format(i), DC_module(*(256, 256), **{**{'kernel_size': 3, 'stride': 1, 'padding': 1, 'bias': False}, **extra_args}))
             self.__setattr__("bn4b{}_branch2b".format(i), nn.BatchNorm2d(256))
             self.__setattr__("res4b{}_branch2c".format(i), nn.Conv2d(256, 1024, kernel_size=1, stride=1, padding=0, bias=False))
             self.__setattr__("bn4b{}_branch2c".format(i), nn.BatchNorm2d(1024))
@@ -86,7 +92,8 @@ class RefineNetDeform(nn.Module):
 
         self.res5a_branch2a = nn.Conv2d(1024, 512, kernel_size=1, stride=2, padding=0, bias=False)
         self.bn5a_branch2a = nn.BatchNorm2d(512)
-        self.res5a_branch2b = DC_module(512, 512, kernel_size=3, stride=1, padding=1, bias=False)
+        # self.res5a_branch2b = DC_module(512, 512, kernel_size=3, stride=1, padding=1, bias=False)
+        self.res5a_branch2b = DC_module(*(512, 512), **{**{'kernel_size': 3, 'stride': 1, 'padding': 1, 'bias': False}, **extra_args})
         self.bn5a_branch2b = nn.BatchNorm2d(512)
         self.res5a_branch2c = nn.Conv2d(512, 2048, kernel_size=1, stride=1, padding=0, bias=False)
         self.bn5a_branch2c = nn.BatchNorm2d(2048)
@@ -94,15 +101,19 @@ class RefineNetDeform(nn.Module):
         for i in "bc":
             self.__setattr__("res5{}_branch2a".format(i), nn.Conv2d(2048, 512, kernel_size=1, stride=1, padding=0, bias=False))
             self.__setattr__("bn5{}_branch2a".format(i), nn.BatchNorm2d(512))
-            self.__setattr__("res5{}_branch2b".format(i), DC_module(512, 512, kernel_size=3, stride=1, padding=1, bias=False))
+            # self.__setattr__("res5{}_branch2b".format(i), DC_module(512, 512, kernel_size=3, stride=1, padding=1, bias=False))
+            self.__setattr__("res5{}_branch2b".format(i), DC_module(*(512, 512), **{**{'kernel_size': 3, 'stride': 1, 'padding': 1, 'bias': False}, **extra_args}))
             self.__setattr__("bn5{}_branch2b".format(i), nn.BatchNorm2d(512))
             self.__setattr__("res5{}_branch2c".format(i), nn.Conv2d(512, 2048, kernel_size=1, stride=1, padding=0, bias=False))
             self.__setattr__("bn5{}_branch2c".format(i), nn.BatchNorm2d(2048))
 
         # refinenet
-        self.p_ims1d2_outl1_dimred = DC_module(2048, 512, kernel_size=3, stride=1, padding=1, bias=False)
-        self.p_ims1d2_outl2_dimred = DC_module(1024, 256, kernel_size=3, stride=1, padding=1, bias=False)
-        self.p_ims1d2_outl3_dimred = DC_module(512, 256,  kernel_size=3, stride=1, padding=1, bias=False)
+        # self.p_ims1d2_outl1_dimred = DC_module(2048, 512, kernel_size=3, stride=1, padding=1, bias=False)
+        self.p_ims1d2_outl1_dimred = DC_module(*(2048, 512), **{**{'kernel_size': 3, 'stride': 1, 'padding': 1, 'bias': False}, **extra_args})
+        # self.p_ims1d2_outl2_dimred = DC_module(1024, 256, kernel_size=3, stride=1, padding=1, bias=False)
+        self.p_ims1d2_outl2_dimred = DC_module(*(1024, 256), **{**{'kernel_size': 3, 'stride': 1, 'padding': 1, 'bias': False}, **extra_args})
+        # self.p_ims1d2_outl3_dimred = DC_module(512, 256,  kernel_size=3, stride=1, padding=1, bias=False)
+        self.p_ims1d2_outl3_dimred = DC_module(*(512, 256), **{**{'kernel_size': 3, 'stride': 1, 'padding': 1, 'bias': False}, **extra_args})
         self.p_ims1d2_outl4_dimred = nn.Conv2d(256, 256,  kernel_size=3, stride=1, padding=1, bias=False)
         self.p_ims1d2_outl5_dimred = nn.Conv2d(64, 64,    kernel_size=3, stride=1, padding=1, bias=False)
         self.p_ims1d2_outl6_dimred = nn.Conv2d(3, 64,     kernel_size=3, stride=1, padding=1, bias=False)
@@ -112,8 +123,10 @@ class RefineNetDeform(nn.Module):
             c = channels[i - 1]
             for j in range(1, 3):
                 if i < 4:
-                    self.__setattr__("adapt_input_path{}_b{}_conv".format(i, j), DC_module(c, c, kernel_size=3, stride=1, padding=1, bias=True))
-                    self.__setattr__("adapt_input_path{}_b{}_conv_relu_varout_dimred".format(i, j), DC_module(c, c, kernel_size=3, stride=1, padding=1, bias=False))
+                    # self.__setattr__("adapt_input_path{}_b{}_conv".format(i, j), DC_module(c, c, kernel_size=3, stride=1, padding=1, bias=True))
+                    self.__setattr__("adapt_input_path{}_b{}_conv".format(i, j), DC_module(*(c, c), **{**{'kernel_size': 3, 'stride': 1, 'padding': 1, 'bias': True}, **extra_args}))
+                    # self.__setattr__("adapt_input_path{}_b{}_conv_relu_varout_dimred".format(i, j), DC_module(c, c, kernel_size=3, stride=1, padding=1, bias=False))
+                    self.__setattr__("adapt_input_path{}_b{}_conv_relu_varout_dimred".format(i, j), DC_module(*(c, c), **{**{'kernel_size': 3, 'stride': 1, 'padding': 1, 'bias': False}, **extra_args}))
                 else:
                     self.__setattr__("adapt_input_path{}_b{}_conv".format(i, j), nn.Conv2d(c, c, kernel_size=3, stride=1, padding=1, bias=True))
                     self.__setattr__("adapt_input_path{}_b{}_conv_relu_varout_dimred".format(i, j), nn.Conv2d(c, c, kernel_size=3, stride=1, padding=1, bias=False))
@@ -121,15 +134,18 @@ class RefineNetDeform(nn.Module):
         for i in range(2, 7):
             c = channels[i - 1]
             if i < 4:
-                self.__setattr__("adapt_input_path{}_b2_joint_varout_dimred".format(i), DC_module(c, c, kernel_size=3, stride=1, padding=1, bias=False))
+                # self.__setattr__("adapt_input_path{}_b2_joint_varout_dimred".format(i), DC_module(c, c, kernel_size=3, stride=1, padding=1, bias=False))
+                self.__setattr__("adapt_input_path{}_b2_joint_varout_dimred".format(i), DC_module(*(c, c), **{**{'kernel_size': 3, 'stride': 1, 'padding': 1, 'bias': False}, **extra_args}))
             else:
                 self.__setattr__("adapt_input_path{}_b2_joint_varout_dimred".format(i), nn.Conv2d(c, c, kernel_size=3, stride=1, padding=1, bias=False))
 
         for i in range(1, 7):
             c = channels[i - 1]
             if i < 4:
-                self.__setattr__("mflow_conv_g{}_poolprev_relu_varout_pb1".format(i), DC_module(c, c, kernel_size=3, stride=1, padding=1, bias=False))
-                self.__setattr__("mflow_conv_g{}_pool1_outvar_pb2".format(i), DC_module(c, c, kernel_size=3, stride=1, padding=1, bias=False))
+                # self.__setattr__("mflow_conv_g{}_poolprev_relu_varout_pb1".format(i), DC_module(c, c, kernel_size=3, stride=1, padding=1, bias=False))
+                self.__setattr__("mflow_conv_g{}_poolprev_relu_varout_pb1".format(i), DC_module(*(c, c), **{**{'kernel_size': 3, 'stride': 1, 'padding': 1, 'bias': False}, **extra_args}))
+                # self.__setattr__("mflow_conv_g{}_pool1_outvar_pb2".format(i), DC_module(c, c, kernel_size=3, stride=1, padding=1, bias=False))
+                self.__setattr__("mflow_conv_g{}_pool1_outvar_pb2".format(i), DC_module(*(c, c), **{**{'kernel_size': 3, 'stride': 1, 'padding': 1, 'bias': False}, **extra_args}))
             else:
                 self.__setattr__("mflow_conv_g{}_poolprev_relu_varout_pb1".format(i), nn.Conv2d(c, c, kernel_size=3, stride=1, padding=1, bias=False))
                 self.__setattr__("mflow_conv_g{}_pool1_outvar_pb2".format(i), nn.Conv2d(c, c, kernel_size=3, stride=1, padding=1, bias=False))
@@ -146,8 +162,10 @@ class RefineNetDeform(nn.Module):
             c = channels[i - 1]
             if i < 4:
                 for j in range(1, 4):
-                    self.__setattr__("mflow_conv_g{}_b{}_conv".format(i, j), DC_module(c, c, kernel_size=3, stride=1, padding=1, bias=True))
-                    self.__setattr__("mflow_conv_g{}_b{}_conv_relu_varout_dimred".format(i, j), DC_module(c, c, kernel_size=3, stride=1, padding=1, bias=False))
+                    # self.__setattr__("mflow_conv_g{}_b{}_conv".format(i, j), DC_module(c, c, kernel_size=3, stride=1, padding=1, bias=True))
+                    self.__setattr__("mflow_conv_g{}_b{}_conv".format(i, j), DC_module(*(c, c), **{**{'kernel_size': 3, 'stride': 1, 'padding': 1, 'bias': True}, **extra_args}))
+                    # self.__setattr__("mflow_conv_g{}_b{}_conv_relu_varout_dimred".format(i, j), DC_module(c, c, kernel_size=3, stride=1, padding=1, bias=False))
+                    self.__setattr__("mflow_conv_g{}_b{}_conv_relu_varout_dimred".format(i, j), DC_module(*(c, c), **{**{'kernel_size': 3, 'stride': 1, 'padding': 1, 'bias': False}, **extra_args}))
             else:
                 for j in range(1, 4):
                     self.__setattr__("mflow_conv_g{}_b{}_conv".format(i, j), nn.Conv2d(c, c, kernel_size=3, stride=1, padding=1, bias=True))
@@ -157,7 +175,8 @@ class RefineNetDeform(nn.Module):
             c0 = channels[i - 1]
             c1 = channels[i]
             if i < 4:
-                self.__setattr__("mflow_conv_g{}_b3_joint_varout_dimred".format(i), DC_module(c0, c1, kernel_size=3, stride=1, padding=1, bias=False))
+                # self.__setattr__("mflow_conv_g{}_b3_joint_varout_dimred".format(i), DC_module(c0, c1, kernel_size=3, stride=1, padding=1, bias=False))
+                self.__setattr__("mflow_conv_g{}_b3_joint_varout_dimred".format(i), DC_module(*(c0, c1), **{**{'kernel_size': 3, 'stride': 1, 'padding': 1, 'bias': False}, **extra_args}))
             else:
                 self.__setattr__("mflow_conv_g{}_b3_joint_varout_dimred".format(i), nn.Conv2d(c0, c1, kernel_size=3, stride=1, padding=1, bias=False))
 

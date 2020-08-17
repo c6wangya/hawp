@@ -4,7 +4,7 @@ import torch.nn.functional as F
 
 
 class DeformConv2d(nn.Module):
-    def __init__(self, inc, outc, kernel_size=3, stride=1,  padding=1, bias=False, modulation=True, attn=False):
+    def __init__(self, inc, outc, kernel_size=3, stride=1,  padding=1, bias=False, modulation=True, attn=False, attn_only=False):
         """
         Args:
             modulation (bool, optional): If True, Modulated Defomable Convolution (Deformable ConvNets v2).
@@ -14,22 +14,29 @@ class DeformConv2d(nn.Module):
         self.padding = padding
         self.stride = stride
         self.zero_padding = nn.ZeroPad2d(padding)
-        self.conv = nn.Conv2d(inc, outc, kernel_size=kernel_size, stride=kernel_size, bias=bias)
+        self.attn = attn
+        self.attn_only = attn_only and attn
+        self.modulation = modulation
+        if not self.attn_only:
+            self.conv = nn.Conv2d(inc, outc, kernel_size=kernel_size, stride=kernel_size, bias=bias)
+        else:
+            self.conv = nn.Identity()
 
         self.p_conv = nn.Conv2d(inc, 2*kernel_size*kernel_size, kernel_size=3, padding=1, stride=stride)
         nn.init.constant_(self.p_conv.weight, 0)
         self.p_conv.register_backward_hook(self._set_lr)
 
         # local attn
-        self.attn = attn
         if self.attn:
             self.inc = inc
             self.outc = outc
             self.query_conv = nn.Conv2d(inc, inc, kernel_size=1, stride=stride, bias=bias)
             self.key_conv = nn.Conv2d(inc, inc, kernel_size=1, stride=stride, bias=bias)
+        if self.attn_only:
             self.value_conv = nn.Conv2d(inc, inc, kernel_size=1, stride=stride, bias=bias)
+        else:
+            self.value_conv = nn.Identity()
 
-        self.modulation = modulation
         if modulation:
             self.m_conv = nn.Conv2d(inc, kernel_size*kernel_size, kernel_size=3, padding=1, stride=stride)
             nn.init.constant_(self.m_conv.weight, 0)
@@ -104,7 +111,8 @@ class DeformConv2d(nn.Module):
         if self.modulation:
             m = torch.sigmoid(self.m_conv(x))
         # compute feature map based on offset
-        x_offset = self.compute_x_off(x, offset)
+        value = self.value_conv(x)
+        x_offset = self.compute_x_off(value, offset)
         # compute attension map
         if self.attn:
             attn_offset = self.compute_attn(x, offset)
@@ -119,7 +127,10 @@ class DeformConv2d(nn.Module):
         if self.attn:
             x_offset *= attn_offset
 
-        x_offset = self._reshape_x_offset(x_offset, self.kernel_size)
+        if self.attn_only:
+            x_offset = torch.sum(x_offset, dim=-1).squeeze(-1)
+        else:
+            x_offset = self._reshape_x_offset(x_offset, self.kernel_size)
         out = self.conv(x_offset)
 
         return out
