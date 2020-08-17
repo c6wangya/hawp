@@ -20,7 +20,7 @@ class DeformConv2d(nn.Module):
         if not self.attn_only:
             self.conv = nn.Conv2d(inc, outc, kernel_size=kernel_size, stride=kernel_size, bias=bias)
         else:
-            self.conv = nn.Identity()
+            self.conv = nn.Conv2d(inc, outc, kernel_size=1, stride=stride, bias=bias)
 
         self.p_conv = nn.Conv2d(inc, 2*kernel_size*kernel_size, kernel_size=3, padding=1, stride=stride)
         nn.init.constant_(self.p_conv.weight, 0)
