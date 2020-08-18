@@ -4,7 +4,7 @@ import torch.nn.functional as F
 
 
 class DeformConv2d(nn.Module):
-    def __init__(self, inc, outc, kernel_size=3, stride=1,  padding=1, bias=False, modulation=True, attn=False, attn_only=False):
+    def __init__(self, inc, outc, kernel_size=3, stride=1,  padding=1, bias=False, modulation=True, attn=False, attn_only=False, attn_dim=''):
         """
         Args:
             modulation (bool, optional): If True, Modulated Defomable Convolution (Deformable ConvNets v2).
@@ -17,6 +17,7 @@ class DeformConv2d(nn.Module):
         self.attn = attn
         self.attn_only = attn_only and attn
         self.modulation = modulation
+        self.attn_dim = attn_dim
         if not self.attn_only:
             self.conv = nn.Conv2d(inc, outc, kernel_size=kernel_size, stride=kernel_size, bias=bias)
         else:
@@ -47,19 +48,26 @@ class DeformConv2d(nn.Module):
         grad_input = (grad_input[i] * 0.1 for i in range(len(grad_input)))
         grad_output = (grad_output[i] * 0.1 for i in range(len(grad_output)))
 
-    def compute_attn(self, x, offset):
+    def compute_attn(self, x, x_offset, offset, dim=''):
         """ compute local attention map indexed by offset """
         B, _, H, W = x.size()
-        # query
         q_out = self.query_conv(x)  # [B, C, H, W]
-        q_out = q_out.view(B, self.inc, H, W, 1)
-        # key
-        k_out = self.key_conv(x)
+        k_out = self.key_conv(x)  # [B, C, H, W]
         k_out = self.compute_x_off(k_out, offset)  # [B, C, H, W, k**2]
-        # attention map
-        attn_map = q_out * k_out
-        attn_map = F.softmax(attn_map, dim=-1)  # [B, C, H, W, k**2]
-        return attn_map
+        if dim == '':
+            # query
+            q_out = q_out.view(B, self.inc, H, W, 1)
+            # attention map
+            attn_map = q_out * k_out
+            attn_map = F.softmax(attn_map, dim=-1)  # [B, C, H, W, k**2]
+            x_offset = x_offset * attn_map
+        elif dim == 'c':
+            q_out = q_out.permute(0, 2, 3, 1).unsqueeze(3)  # [B, H, W, 1, C]
+            k_out = k_out.permute(0, 2, 3, 1, 4)  # [B, H, W, C, k**2]
+            attn_map = torch.einsum('bhwmc,bhwck->bhwmk', q_out, k_out)  # [B, H, W, 1, k**2]
+            attn_map = F.softmax(attn_map, dim=-1).permute(0, 3, 1, 2, 4)  # [B, 1, H, W, k**2]
+            x_offset = x_offset * attn_map
+        return x_offset
 
     def compute_x_off(self, x, offset):
         """ compute feature indexed by offset """
@@ -107,6 +115,7 @@ class DeformConv2d(nn.Module):
         return x_offset
 
     def forward(self, x):
+        B, _, H, W = x.size()
         offset = self.p_conv(x)
         if self.modulation:
             m = torch.sigmoid(self.m_conv(x))
@@ -115,7 +124,7 @@ class DeformConv2d(nn.Module):
         x_offset = self.compute_x_off(value, offset)
         # compute attension map
         if self.attn:
-            attn_offset = self.compute_attn(x, offset)
+            x_offset = self.compute_attn(x, x_offset, offset, dim=self.attn_dim)
 
         # modulation
         if self.modulation:
@@ -123,10 +132,7 @@ class DeformConv2d(nn.Module):
             m = m.unsqueeze(dim=1)
             m = torch.cat([m for _ in range(x_offset.size(1))], dim=1)
             x_offset *= m
-
-        if self.attn:
-            x_offset *= attn_offset
-
+        
         if self.attn_only:
             x_offset = torch.sum(x_offset, dim=-1).squeeze(-1)
         else:
