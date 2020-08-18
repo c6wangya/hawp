@@ -31,7 +31,8 @@ def train_building():
                         default=None,
                         nargs=argparse.REMAINDER
                         )
-    parser.add_argument("--checkpoint", help="pytorch checkpoint")
+    parser.add_argument("--checkpoint", help="checkpoint to be loaded")
+    parser.add_argument("--checkpoint_dir", help="checkpoint dir")
     parser.add_argument("--resume_train", action="store_true", help="load checkpoint and resume training")
     parser.add_argument("--fp16", action="store_true", help="training in fp16 mode")
     args = parser.parse_args()
@@ -62,7 +63,7 @@ def train_building():
             params_res.append(v)
         else:
             params_refine.append(v)
-    optimizer = torch.optim.Adam([{"params": params_res, "lr": 0.00000003}, {"params": params_refine, "lr": 0.0000003}], betas=(0.9, 0.999), weight_decay=0.0005)
+    optimizer = torch.optim.Adam([{"params": params_res, "lr": 0.000003}, {"params": params_refine, "lr": 0.00003}], betas=(0.9, 0.999), weight_decay=0.0005)
 
     if args.checkpoint and args.resume_train:
         optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
@@ -80,6 +81,9 @@ def train_building():
     total_loss = 0.0
     t = 0 if not args.resume_train else checkpoint["iter"]
 
+    if not os.path.exists(args.checkpoint_dir):
+        os.makedirs(args.checkpoint_dir)
+    
     for epoch in range(1000):
         for it, (images, target) in enumerate(train_dataset):
             images = images.to(device)
@@ -123,7 +127,7 @@ def train_building():
                     # 'scaler_state_dict': scaler.state_dict(),
                     'loss': loss,
                     },
-                    "checkpoint/checkpoint_finetune_iter_{}".format(t)
+                    "{}/checkpoint_finetune_iter_{}".format(args.checkpoint_dir, t)
                 )
             t += 1
 
