@@ -1,6 +1,7 @@
 import torch
 from torch import nn
 import torch.nn.functional as F
+import numpy as np
 
 
 class DeformConv2d(nn.Module):
@@ -36,8 +37,9 @@ class DeformConv2d(nn.Module):
             self.key_conv = nn.Conv2d(inc, inc, kernel_size=1, stride=stride, bias=bias)
         if self.attn_only:
             self.value_conv = nn.Conv2d(inc, inc, kernel_size=1, stride=stride, bias=bias)
-            w_head = torch.randn((self.inc // self.n_head, self.n_head, self.inc),requires_grad=True)
+            w_head = torch.empty((self.inc // self.n_head, self.n_head, self.inc),requires_grad=True)
             self.w_head = torch.nn.Parameter(w_head)
+            torch.nn.init.normal_(w_head, std=0.1/np.sqrt(self.inc))
             self.register_parameter("head_weight",self.w_head)
         else:
             self.value_conv = nn.Identity()
