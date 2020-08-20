@@ -36,9 +36,9 @@ class DeformConv2d(nn.Module):
             self.key_conv = nn.Conv2d(inc, inc, kernel_size=1, stride=stride, bias=bias)
         if self.attn_only:
             self.value_conv = nn.Conv2d(inc, inc, kernel_size=1, stride=stride, bias=bias)
-            w_head = torch.randn((self.n_head,1),requires_grad=True)
+            w_head = torch.randn((self.inc // self.n_head, self.n_head, self.inc),requires_grad=True)
             self.w_head = torch.nn.Parameter(w_head)
-            self.register_parameter("head weight",self.w_head)
+            self.register_parameter("head_weight",self.w_head)
         else:
             self.value_conv = nn.Identity()
 
@@ -78,7 +78,7 @@ class DeformConv2d(nn.Module):
             attn_maps = [F.softmax(attn_maps[i], dim=-1).permute(0, 3, 1, 2, 4) for i in range(self.n_head)]
             x_offset = [x_offset[:, i*C//self.n_head:(i+1)*C//self.n_head, :, :, :] * attn_maps[i] for i in range(self.n_head)]
             x_offset = torch.stack(x_offset, dim=-1)
-            x_offset = torch.einsum('behwkn,nm->behwkm', x_offset, self.w_head).squeeze(-1)
+            x_offset = torch.einsum('behwkn,enm->bhwkm', x_offset, self.w_head).permute(0, 4, 1, 2, 3)  # [B, C, H, W, k**2]
         return x_offset
 
     def compute_x_off(self, x, offset):
