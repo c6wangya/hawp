@@ -126,7 +126,7 @@ def build_building_train_dataset(cfg):
     return dataset
 
 def build_building_test_dataset(cfg):
-    args = {'root': './data/building_patches-raster/'}
+    args = {'root': './data/building_patches-raster-128/'}
     args['transform'] = Compose(
                                 [
                                     ResizeImage(cfg.DATASETS.IMAGE.HEIGHT,
