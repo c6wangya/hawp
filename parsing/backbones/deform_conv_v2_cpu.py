@@ -19,7 +19,8 @@ class DeformConv2d(nn.Module):
             n_head=2, 
             ctl_ks=9, 
             n_sample=9, 
-            use_contrastive=False
+            use_contrastive=False,
+            share_weights=True
         ):
         """
         Args:
@@ -60,6 +61,8 @@ class DeformConv2d(nn.Module):
             self.w_head = torch.nn.Parameter(w_head)
             torch.nn.init.normal_(w_head, std=0.1/np.sqrt(self.inc))
             self.register_parameter("head_weight",self.w_head)
+        elif self.attn_only and self.n_head > 1 and not self.share_weights:
+            self.value_conv
         else:
             self.value_conv = nn.Identity()
 
@@ -73,7 +76,7 @@ class DeformConv2d(nn.Module):
         grad_input = (grad_input[i] * 0.1 for i in range(len(grad_input)))
         grad_output = (grad_output[i] * 0.1 for i in range(len(grad_output)))
 
-    def compute_attn(self, x, x_offset, offset, dim=''):
+    def compute_attn(self, x, x_offset, offset, dim='', share_weights=True):
         """ compute local attention map indexed by offset """
         B, C, H, W = x.size()
         q_out = self.query_conv(x)  # [B, C, H, W]
@@ -92,6 +95,14 @@ class DeformConv2d(nn.Module):
             attn_map = torch.einsum('bhwmc,bhwck->bhwmk', q_out, k_out)  # [B, H, W, 1, k**2]
             attn_map = F.softmax(attn_map, dim=-1).permute(0, 3, 1, 2, 4)  # [B, 1, H, W, k**2]
             x_offset = x_offset * attn_map
+        elif dim == 'c' and share_weights:
+            qs = [q_out.permute(0, 2, 3, 1)[:, :, :, i*C//self.n_head:(i+1)*C//self.n_head].unsqueeze(3) for i in range(self.n_head)]
+            ks = [k_out.permute(0, 2, 3, 1, 4)[:, :, :, i*C//self.n_head:(i+1)*C//self.n_head, :] for i in range(self.n_head)]
+            attn_maps = [torch.einsum('bhwmc,bhwck->bhwmk', qs[i], ks[i]) for i in range(self.n_head)]
+            attn_maps = [F.softmax(attn_maps[i], dim=-1).permute(0, 3, 1, 2, 4) for i in range(self.n_head)]
+            x_offset = [x_offset[:, i*C//self.n_head:(i+1)*C//self.n_head, :, :, :] * attn_maps[i] for i in range(self.n_head)]
+            x_offset = torch.stack(x_offset, dim=-1)
+            x_offset = torch.einsum('behwkn,enm->bhwkm', x_offset, self.w_head).permute(0, 4, 1, 2, 3)  # [B, C, H, W, k**2]
         elif dim == 'c':
             qs = [q_out.permute(0, 2, 3, 1)[:, :, :, i*C//self.n_head:(i+1)*C//self.n_head].unsqueeze(3) for i in range(self.n_head)]
             ks = [k_out.permute(0, 2, 3, 1, 4)[:, :, :, i*C//self.n_head:(i+1)*C//self.n_head, :] for i in range(self.n_head)]
@@ -193,12 +204,13 @@ class DeformConv2d(nn.Module):
         x_norm = torch.norm(x, dim=1).unsqueeze(dim=-1)  # [B, H, W, 1]
         pos_norm = torch.norm(x_pos_offset, dim=1)  # [B, H, W, k**2]
         neg_norm = torch.norm(x_neg_offset, dim=1)  # [B, H, W, k**2]
-        pos_sim = pos_dot_prod / x_norm / (pos_norm + 1) / tao  # [B, H, W, k**2]
-        neg_sim = neg_dot_prod / x_norm / neg_norm / tao  # [B, H, W, k**2]
+        pos_sim = pos_dot_prod / (x_norm + (x_norm == 0).int()) / (pos_norm + (pos_norm == 0).int()) / tao  # [B, H, W, k**2]
+        neg_sim = neg_dot_prod / (x_norm + (x_norm == 0).int()) / (neg_norm + (neg_norm == 0).int()) / tao  # [B, H, W, k**2]
         pos_sim = torch.exp(pos_sim)  # [B, H, W, k**2]
         neg_sim = torch.exp(neg_sim)  # [B, H, W, k**2]
         total = pos_sim.sum(dim=-1, keepdim=True) + neg_sim.sum(dim=-1, keepdim=True) - pos_sim  # [B, H, W, k**2]
         l = torch.mean(-torch.log(pos_sim / total), dim=-1)  # [B, H, W, k**2]
+        assert not torch.isnan(l).any()
         return l
         
     def compute_x_off(self, x, offset):
