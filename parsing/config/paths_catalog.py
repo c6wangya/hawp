@@ -57,7 +57,7 @@ class DatasetCatalog(object):
         )
 
         if 'train' in name:
-            return dict(factory="HRJDataset",args=args)
+            return dict(factory="TrainDataset",args=args)
         if 'test' in name and 'ann_file' in attrs:
             return dict(factory="TestDatasetWithAnnotations",
                         args=args)

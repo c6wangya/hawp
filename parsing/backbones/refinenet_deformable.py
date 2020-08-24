@@ -7,13 +7,14 @@ from .deform_conv_v2_cpu import DeformConv2d as DC
 
 class RefineNetDeform(nn.Module):
 
-    def __init__(self, classes_num, pretrained_weights=None, cuda=True, attn=False, attn_only=False, attn_dim='', n_head=1):
+    def __init__(self, classes_num, pretrained_weights=None, cuda=True, attn=False, attn_only=False, attn_dim='', n_head=1, use_contrastive=False):
+        self.use_cuda_version = cuda
         if cuda:
             DC_module = DCN
             extra_args = {}
         else:
             DC_module = DC
-            extra_args = {'attn': attn, 'attn_only': attn_only, 'attn_dim': attn_dim, 'n_head': n_head}
+            extra_args = {'attn': attn, 'attn_only': attn_only, 'attn_dim': attn_dim, 'n_head': n_head, 'use_contrastive': use_contrastive}
 
         super(RefineNetDeform, self).__init__()
         self.drop = nn.Dropout(p=0.5)
@@ -211,6 +212,7 @@ class RefineNetDeform(nn.Module):
         x = self.bn_conv1(x)
         x = self.conv1_relu(x)
         resconv1 = x
+        contrastive_loss = []
 
         # resnet block1
         x = self.pool1(x)
@@ -251,6 +253,9 @@ class RefineNetDeform(nn.Module):
         res3a_b2 = self.bn3a_branch2a(res3a_b2)
         res3a_b2 = self.relu(res3a_b2)
         res3a_b2 = self.res3a_branch2b(res3a_b2)
+        if not self.use_cuda_version:
+            contrastive_loss.append(res3a_b2[1])
+            res3a_b2 = res3a_b2[0]
         res3a_b2 = self.bn3a_branch2b(res3a_b2)
         res3a_b2 = self.relu(res3a_b2)
         res3a_b2 = self.res3a_branch2c(res3a_b2)
@@ -264,6 +269,9 @@ class RefineNetDeform(nn.Module):
             y = self.__getattr__("bn3b{}_branch2a".format(i))(y)
             y = self.relu(y)
             y = self.__getattr__("res3b{}_branch2b".format(i))(y)
+            if not self.use_cuda_version:
+                contrastive_loss.append(y[1])
+                y = y[0]
             y = self.__getattr__("bn3b{}_branch2b".format(i))(y)
             y = self.relu(y)
             y = self.__getattr__("res3b{}_branch2c".format(i))(y)
@@ -281,6 +289,9 @@ class RefineNetDeform(nn.Module):
         res4a_b2 = self.bn4a_branch2a(res4a_b2)
         res4a_b2 = self.relu(res4a_b2)
         res4a_b2 = self.res4a_branch2b(res4a_b2)
+        if not self.use_cuda_version:
+            contrastive_loss.append(res4a_b2[1])
+            res4a_b2 = res4a_b2[0]
         res4a_b2 = self.bn4a_branch2b(res4a_b2)
         res4a_b2 = self.relu(res4a_b2)
         res4a_b2 = self.res4a_branch2c(res4a_b2)
@@ -294,6 +305,9 @@ class RefineNetDeform(nn.Module):
             y = self.__getattr__("bn4b{}_branch2a".format(i))(y)
             y = self.relu(y)
             y = self.__getattr__("res4b{}_branch2b".format(i))(y)
+            if not self.use_cuda_version:
+                contrastive_loss.append(y[1])
+                y = y[0]
             y = self.__getattr__("bn4b{}_branch2b".format(i))(y)
             y = self.relu(y)
             y = self.__getattr__("res4b{}_branch2c".format(i))(y)
@@ -311,6 +325,9 @@ class RefineNetDeform(nn.Module):
         res5a_b2 = self.bn5a_branch2a(res5a_b2)
         res5a_b2 = self.relu(res5a_b2)
         res5a_b2 = self.res5a_branch2b(res5a_b2)
+        if not self.use_cuda_version:
+            contrastive_loss.append(res5a_b2[1])
+            res5a_b2 = res5a_b2[0]
         res5a_b2 = self.bn5a_branch2b(res5a_b2)
         res5a_b2 = self.relu(res5a_b2)
         res5a_b2 = self.res5a_branch2c(res5a_b2)
@@ -324,6 +341,9 @@ class RefineNetDeform(nn.Module):
             y = self.__getattr__("bn5{}_branch2a".format(i))(y)
             y = self.relu(y)
             y = self.__getattr__("res5{}_branch2b".format(i))(y)
+            if not self.use_cuda_version:
+                contrastive_loss.append(y[1])
+                y = y[0]
             y = self.__getattr__("bn5{}_branch2b".format(i))(y)
             y = self.relu(y)
             y = self.__getattr__("res5{}_branch2c".format(i))(y)
@@ -337,8 +357,17 @@ class RefineNetDeform(nn.Module):
         res5c = self.drop(res5c)
         res4b22 = self.drop(res4b22)
         outl1 = self.p_ims1d2_outl1_dimred(res5c)
+        if not self.use_cuda_version:
+            contrastive_loss.append(outl1[1])
+            outl1 = outl1[0]
         outl2 = self.p_ims1d2_outl2_dimred(res4b22)
+        if not self.use_cuda_version:
+            contrastive_loss.append(outl2[1])
+            outl2 = outl2[0]
         outl3 = self.p_ims1d2_outl3_dimred(res3b3)
+        if not self.use_cuda_version:
+            contrastive_loss.append(outl3[1])
+            outl3 = outl3[0]
         outl4 = self.p_ims1d2_outl4_dimred(res2c)
         outl5 = self.p_ims1d2_outl5_dimred(resconv1)
         outl6 = self.p_ims1d2_outl6_dimred(data)
@@ -349,66 +378,120 @@ class RefineNetDeform(nn.Module):
             for j in range(1, 3):
                 y = F.relu(x)
                 y = self.__getattr__("adapt_input_path{}_b{}_conv".format(i, j))(y)
+                if not self.use_cuda_version and i < 4:
+                    contrastive_loss.append(y[1])
+                    y = y[0]
                 y = self.relu(y)
                 y = self.__getattr__("adapt_input_path{}_b{}_conv_relu_varout_dimred".format(i, j))(y)
+                if not self.use_cuda_version and i < 4:
+                    contrastive_loss.append(y[1])
+                    y = y[0]
                 y += x
                 x = y
             if i > 1:
                 y = self.__getattr__("adapt_input_path{}_b2_joint_varout_dimred".format(i))(y)
+                if not self.use_cuda_version and i < 4:
+                    contrastive_loss.append(y[1])
+                    y = y[0]
             outl[i - 1] = y
         outl1, outl2, outl3, outl4, outl5, outl6 = outl
 
         x0 = outl1
         x0 = self.relu(x0)
         x1 = self.mflow_conv_g1_poolprev_relu_varout_pb1(x0)
+        if not self.use_cuda_version:
+            contrastive_loss.append(x1[1])
+            x1 = x1[0]
         x1 = self.mflow_conv_g1_pool1(x1)
         x2 = self.mflow_conv_g1_pool1_outvar_pb2(x1)
+        if not self.use_cuda_version:
+            contrastive_loss.append(x2[1])
+            x2 = x2[0]
         x2 = self.mflow_conv_g1_pool2(x2)
         x = x0 + x1 + x2
         for i in range(1, 4):
             y = F.relu(x)
             y = self.__getattr__("mflow_conv_g1_b{}_conv".format(i))(y)
+            if not self.use_cuda_version:
+                contrastive_loss.append(y[1])
+                y = y[0]
             y = self.relu(y)
             y = self.__getattr__("mflow_conv_g1_b{}_conv_relu_varout_dimred".format(i))(y)
+            if not self.use_cuda_version:
+                contrastive_loss.append(y[1])
+                y = y[0]
             y += x
             x = y
         y = self.mflow_conv_g1_b3_joint_varout_dimred(y)
+        if not self.use_cuda_version:
+            contrastive_loss.append(y[1])
+            y = y[0]
         y = nn.Upsample(size=outl2.size()[2:], mode='bilinear', align_corners=True)(y)
         g2 = y + outl2
 
         x0 = g2
         x0 = self.relu(x0)
         x1 = self.mflow_conv_g2_poolprev_relu_varout_pb1(x0)
+        if not self.use_cuda_version:
+            contrastive_loss.append(x1[1])
+            x1 = x1[0]
         x1 = self.mflow_conv_g2_pool1(x1)
         x2 = self.mflow_conv_g2_pool1_outvar_pb2(x1)
+        if not self.use_cuda_version:
+            contrastive_loss.append(x2[1])
+            x2 = x2[0]
         x2 = self.mflow_conv_g2_pool2(x2)
         x = x0 + x1 + x2
         for i in range(1, 4):
             y = F.relu(x)
             y = self.__getattr__("mflow_conv_g2_b{}_conv".format(i))(y)
+            if not self.use_cuda_version:
+                contrastive_loss.append(y[1])
+                y = y[0]
             y = self.relu(y)
             y = self.__getattr__("mflow_conv_g2_b{}_conv_relu_varout_dimred".format(i))(y)
+            if not self.use_cuda_version:
+                contrastive_loss.append(y[1])
+                y = y[0]
             y += x
             x = y
         y = self.mflow_conv_g2_b3_joint_varout_dimred(y)
+        if not self.use_cuda_version:
+            contrastive_loss.append(y[1])
+            y = y[0]
         y = nn.Upsample(size=outl3.size()[2:], mode='bilinear', align_corners=True)(y)
         g3 = y + outl3
 
         x0 = g3
         x0 = self.relu(x0)
         x1 = self.mflow_conv_g3_poolprev_relu_varout_pb1(x0)
+        if not self.use_cuda_version:
+            contrastive_loss.append(x1[1])
+            x1 = x1[0]
         x1 = self.mflow_conv_g3_pool1(x1)
         x2 = self.mflow_conv_g3_pool1_outvar_pb2(x1)
+        if not self.use_cuda_version:
+            contrastive_loss.append(x2[1])
+            x2 = x2[0]
         x2 = self.mflow_conv_g3_pool2(x2)
         x = x0 + x1 + x2
         for i in range(1, 4):
             y = F.relu(x)
             y = self.__getattr__("mflow_conv_g3_b{}_conv".format(i))(y)
+            if not self.use_cuda_version:
+                contrastive_loss.append(y[1])
+                y = y[0]
             y = self.relu(y)
             y = self.__getattr__("mflow_conv_g3_b{}_conv_relu_varout_dimred".format(i))(y)
+            if not self.use_cuda_version:
+                contrastive_loss.append(y[1])
+                y = y[0]
             y += x
             x = y
         y = self.mflow_conv_g3_b3_joint_varout_dimred(y)
+        if not self.use_cuda_version:
+            contrastive_loss.append(y[1])
+            y = y[0]
         y = nn.Upsample(size=outl4.size()[2:], mode='bilinear', align_corners=True)(y)
         g4 = y + outl4
 
@@ -472,4 +555,4 @@ class RefineNetDeform(nn.Module):
             x = y
         out = self.drop(y)
         out = self.mflow_conv_g6_b3_joint_drop_conv_new_2(out)
-        return out
+        return out, contrastive_loss

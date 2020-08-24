@@ -3,9 +3,24 @@ from torch import nn
 import torch.nn.functional as F
 import numpy as np
 
-
 class DeformConv2d(nn.Module):
-    def __init__(self, inc, outc, kernel_size=3, stride=1,  padding=1, bias=False, modulation=True, attn=False, attn_only=False, attn_dim='', n_head=2):
+    def __init__(
+            self, 
+            inc, 
+            outc, 
+            kernel_size=3, 
+            stride=1,  
+            padding=1, 
+            bias=False, 
+            modulation=True, 
+            attn=False, 
+            attn_only=False, 
+            attn_dim='', 
+            n_head=2, 
+            ctl_ks=9, 
+            n_sample=9, 
+            use_contrastive=False
+        ):
         """
         Args:
             modulation (bool, optional): If True, Modulated Defomable Convolution (Deformable ConvNets v2).
@@ -20,6 +35,10 @@ class DeformConv2d(nn.Module):
         self.modulation = modulation
         self.attn_dim = attn_dim
         self.n_head = n_head
+        self.ctl_ks = ctl_ks
+        self.n_sample = n_sample
+        self.use_contrastive = use_contrastive
+        self.counter = 0
         if not self.attn_only:
             self.conv = nn.Conv2d(inc, outc, kernel_size=kernel_size, stride=kernel_size, bias=bias)
         else:
@@ -83,17 +102,116 @@ class DeformConv2d(nn.Module):
             x_offset = torch.einsum('behwkn,enm->bhwkm', x_offset, self.w_head).permute(0, 4, 1, 2, 3)  # [B, C, H, W, k**2]
         return x_offset
 
+    def _quantize_offset(self, x, offset):
+        dtype = offset.data.type()
+        # ks = self.kernel_size
+        N = offset.size(1) // 2
+
+        # (b, 2N, h, w)
+        p = self._get_p(offset, dtype, padding=False)
+        
+        # (b, h, w, 2N)
+        N = offset.size(1) // 2
+        p = p.contiguous().permute(0, 2, 3, 1)
+        q_lt = p.detach().floor()
+        q_rb = q_lt + 1
+
+        q_lt = torch.cat([torch.clamp(q_lt[..., :N], 0, x.size(2)-1), torch.clamp(q_lt[..., N:], 0, x.size(3)-1)], dim=-1).long()
+        q_rb = torch.cat([torch.clamp(q_rb[..., :N], 0, x.size(2)-1), torch.clamp(q_rb[..., N:], 0, x.size(3)-1)], dim=-1).long()
+        q_lb = torch.cat([q_lt[..., :N], q_rb[..., N:]], dim=-1)
+        q_rt = torch.cat([q_rb[..., :N], q_lt[..., N:]], dim=-1)
+
+        # clip p 
+        p = torch.cat([torch.clamp(p[..., :N], 0, x.size(2)-1), torch.clamp(p[..., N:], 0, x.size(3)-1)], dim=-1)
+
+        q_x = torch.cat([q_lt[..., :N], q_rb[..., :N], q_lb[..., :N], q_rt[..., :N]], dim=-1)
+        q_y = torch.cat([q_lt[..., N:], q_rb[..., N:], q_lb[..., N:], q_rt[..., N:]], dim=-1)
+
+        return torch.cat([q_x, q_y], dim=-1)
+
+    def compute_contrastive_offset(self, x, offset):
+        ctl_ks = min(self.ctl_ks, x.size(3)-1)
+        N = ctl_ks**2
+        qp = self._quantize_offset(x, offset)  # [B, H, W, 72]
+
+        p_n = torch.zeros(offset.size(0), N*2, offset.size(2), offset.size(3))
+        p_n = self._get_p(p_n, torch.int64, padding=False).permute(0, 2, 3, 1)
+
+        p_y_addition = torch.zeros([x.size(2), x.size(2)]).type(torch.int64)
+        p_y_addition[:, :ctl_ks // 2] = \
+            torch.tensor(list(range(ctl_ks//2))[::-1]).repeat(x.size(2), 1) + 1
+        p_y_addition[:, x.size(2) - ctl_ks // 2:] = \
+            torch.tensor(list(range(ctl_ks//2))).repeat(x.size(2), 1)*-1 - 1
+        p_x_addition = torch.zeros([x.size(2), x.size(2)]).type(torch.int64)
+        p_x_addition[:ctl_ks//2, :] = \
+            torch.tensor(list(range(ctl_ks//2))[::-1]).repeat(x.size(2), 1).permute(1, 0) + 1
+        p_x_addition[x.size(2) - ctl_ks // 2:, :] = \
+            torch.tensor(list(range(ctl_ks//2))).repeat(x.size(2), 1).permute(1, 0)*-1 - 1
+        p_n[:, :, :, :N] += p_x_addition.view(1, x.size(2), x.size(2), 1)
+        p_n[:, :, :, N:] += p_y_addition.view(1, x.size(2), x.size(2), 1)
+
+        qp_x = qp[:, :, :, :qp.size(-1)//2].permute(3, 0, 1, 2)
+        qp_y = qp[:, :, :, qp.size(-1)//2:].permute(3, 0, 1, 2)
+        p_n_x = p_n[:, :, :, :N].permute(3, 0, 1, 2)[:, None].to(qp.device)
+        p_n_y = p_n[:, :, :, N:].permute(3, 0, 1, 2)[:, None].to(qp.device)
+
+        x_match = (qp_x == p_n_x).int()
+        y_match = (qp_y == p_n_y).int()
+
+        iskeep = (x_match * y_match).bool()
+        iskeep = ~iskeep.any(dim=1).permute(1, 2, 3, 0)
+        # iskeep_bitmap = iskeep.int()
+        idx = torch.where(iskeep.to('cpu'))
+
+        def sample_k_pts(k, idx, b, h, w):
+            pool = np.intersect1d(torch.where(idx[0] == b)[0], torch.where(idx[1] == h)[0])
+            pool = np.intersect1d(torch.where(idx[2] == w)[0], pool)
+            # randomly sample k idices
+            selected = np.random.choice(pool, size=k)
+            return torch.stack(idx)[:, selected]
+        # selected = torch.zeros(tuple(iskeep.shape)[:-1] + (9, ))
+        neg_off = torch.zeros(tuple(iskeep.shape)[:-1] + (2*self.n_sample, ))
+        for b in range(iskeep.size(0)):
+            for h in range(iskeep.size(1)):
+                for w in range(iskeep.size(1)):
+                    selected_idices = sample_k_pts(self.n_sample, idx, b, h, w)[-1, :].to('cuda')
+                    neg_off[b, h, w, :self.n_sample] = p_n[([b]*self.n_sample, [h]*self.n_sample, [w]*self.n_sample, selected_idices)]
+                    neg_off[b, h, w, self.n_sample:] = p_n[([b]*self.n_sample, [h]*self.n_sample, [w]*self.n_sample, selected_idices+N)]
+                    del selected_idices
+                    # selected[b, h, w, :] = selected_idices[-1, :]
+        x_neg_off = self._get_x_q(x, neg_off.type(torch.int64), self.n_sample)
+        # x_neg_off = self._get_x_q(x, neg_off.type(torch.int64).to(x.device), self.n_sample)
+        return x_neg_off
+
+    def compute_contrastive_loss(self, x, x_pos_offset, x_neg_offset, tao=0.1):
+        """ x: [B, C, H, W]
+            x_pos_offset: [B, C, H, W, 9]
+            x_neg_offset: [B, C, H, W, 9]
+        """
+        pos_dot_prod = torch.einsum('bchw,bchwn->bhwn', x, x_pos_offset)  # [B, H, W, k**2]
+        neg_dot_prod = torch.einsum('bchw,bchwn->bhwn', x, x_neg_offset)  # [B, H, W, k**2]
+        x_norm = torch.norm(x, dim=1).unsqueeze(dim=-1)  # [B, H, W, 1]
+        pos_norm = torch.norm(x_pos_offset, dim=1)  # [B, H, W, k**2]
+        neg_norm = torch.norm(x_neg_offset, dim=1)  # [B, H, W, k**2]
+        pos_sim = pos_dot_prod / x_norm / (pos_norm + 1) / tao  # [B, H, W, k**2]
+        neg_sim = neg_dot_prod / x_norm / neg_norm / tao  # [B, H, W, k**2]
+        pos_sim = torch.exp(pos_sim)  # [B, H, W, k**2]
+        neg_sim = torch.exp(neg_sim)  # [B, H, W, k**2]
+        total = pos_sim.sum(dim=-1, keepdim=True) + neg_sim.sum(dim=-1, keepdim=True) - pos_sim  # [B, H, W, k**2]
+        l = torch.mean(-torch.log(pos_sim / total), dim=-1)  # [B, H, W, k**2]
+        return l
+        
     def compute_x_off(self, x, offset):
         """ compute feature indexed by offset """
         dtype = offset.data.type()
-        ks = self.kernel_size
+        # ks = self.kernel_size
         N = offset.size(1) // 2
 
         if self.padding:
             x = self.zero_padding(x)
 
         # (b, 2N, h, w)
-        p = self._get_p(offset, dtype)
+        p = self._get_p(offset, dtype, padding=True).to('cuda')
 
         # (b, h, w, 2N)
         p = p.contiguous().permute(0, 2, 3, 1)
@@ -132,9 +250,20 @@ class DeformConv2d(nn.Module):
         offset = self.p_conv(x)
         if self.modulation:
             m = torch.sigmoid(self.m_conv(x))
+
+        # compute feature map based on a sampled neg offset
         # compute feature map based on offset
         value = self.value_conv(x)
+        self.counter += 1
         x_offset = self.compute_x_off(value, offset)
+
+        # compute contrastive loss
+        if self.use_contrastive and x.size(3) >= 8:
+            x_neg_offset = self.compute_contrastive_offset(x, offset)
+            contrastive_loss = self.compute_contrastive_loss(x, x_offset, x_neg_offset)
+        else: 
+            contrastive_loss = 0
+        
         # compute attension map
         if self.attn:
             x_offset = self.compute_attn(x, x_offset, offset, dim=self.attn_dim)
@@ -152,36 +281,43 @@ class DeformConv2d(nn.Module):
             x_offset = self._reshape_x_offset(x_offset, self.kernel_size)
         out = self.conv(x_offset)
 
-        return out
+        return out, contrastive_loss
 
-    def _get_p_n(self, N, dtype):
+    def _get_p_n(self, N, dtype, kernel_size, padding):
         p_n_x, p_n_y = torch.meshgrid(
-            torch.arange(-(self.kernel_size-1)//2, (self.kernel_size-1)//2+1),
-            torch.arange(-(self.kernel_size-1)//2, (self.kernel_size-1)//2+1))
+            torch.arange(-(kernel_size-1)//2, (kernel_size-1)//2+1),
+            torch.arange(-(kernel_size-1)//2, (kernel_size-1)//2+1))
         # (2N, 1)
         p_n = torch.cat([torch.flatten(p_n_x), torch.flatten(p_n_y)], 0)
-        p_n = p_n.view(1, 2*N, 1, 1).type(dtype)
-
+        p_n = p_n.view(1, 2*N, 1, 1)
+        if padding:
+            p_n = p_n.type(torch.float)
         return p_n
 
-    def _get_p_0(self, h, w, N, dtype):
-        p_0_x, p_0_y = torch.meshgrid(
-            torch.arange(1, h*self.stride+1, self.stride),
-            torch.arange(1, w*self.stride+1, self.stride))
+    def _get_p_0(self, h, w, N, dtype, padding):
+        if padding:
+            p_0_x, p_0_y = torch.meshgrid(
+                torch.arange(1, h*self.stride+1, self.stride),
+                torch.arange(1, w*self.stride+1, self.stride))
+        else:
+            p_0_x, p_0_y = torch.meshgrid(
+                torch.arange(0, h*self.stride, self.stride),
+                torch.arange(0, w*self.stride, self.stride))
+
         p_0_x = torch.flatten(p_0_x).view(1, 1, h, w).repeat(1, N, 1, 1)
         p_0_y = torch.flatten(p_0_y).view(1, 1, h, w).repeat(1, N, 1, 1)
-        p_0 = torch.cat([p_0_x, p_0_y], 1).type(dtype)
-
+        p_0 = torch.cat([p_0_x, p_0_y], 1).type(torch.float)
         return p_0
 
-    def _get_p(self, offset, dtype):
+    def _get_p(self, offset, dtype, padding=True):
         N, h, w = offset.size(1)//2, offset.size(2), offset.size(3)
+        device = offset.device
 
         # (1, 2N, 1, 1)
-        p_n = self._get_p_n(N, dtype)
+        p_n = self._get_p_n(N, dtype, int(N**0.5), padding)
         # (1, 2N, h, w)
-        p_0 = self._get_p_0(h, w, N, dtype)
-        p = p_0 + p_n + offset
+        p_0 = self._get_p_0(h, w, N, dtype, padding)
+        p = p_0 + p_n + offset.to('cpu')
         return p
 
     def _get_x_q(self, x, q, N):
@@ -196,7 +332,7 @@ class DeformConv2d(nn.Module):
         # (b, c, h*w*N)
         index = index.contiguous().unsqueeze(dim=1).expand(-1, c, -1, -1, -1).contiguous().view(b, c, -1)
 
-        x_offset = x.gather(dim=-1, index=index).contiguous().view(b, c, h, w, N)
+        x_offset = x.gather(dim=-1, index=index.to('cuda')).contiguous().view(b, c, h, w, N)
 
         return x_offset
 

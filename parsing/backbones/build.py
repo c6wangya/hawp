@@ -38,7 +38,8 @@ def build_rf(cfg):
             attn=cfg.MODEL.ATTN, 
             attn_only=cfg.MODEL.ATTN_ONLY, 
             attn_dim=cfg.MODEL.ATTN_DIM, 
-            n_head=cfg.MODEL.ATTN_N_HEAD
+            n_head=cfg.MODEL.ATTN_N_HEAD, 
+            use_contrastive=cfg.MODEL.ATTN_USE_CTL
     )
     model.out_feature_channels = 2
     return model

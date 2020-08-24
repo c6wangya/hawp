@@ -78,7 +78,8 @@ def train_building():
     loss_fn = torch.nn.CrossEntropyLoss()
     # loss_fn = torch.nn.MSELoss(reduce=True, size_average=True)
 
-    total_loss = 0.0
+    total_loss, total_loss_main, total_loss_aux = 0.0, 0.0, 0.0
+    gap = 100
     t = 0 if not args.resume_train else checkpoint["iter"]
 
     if not os.path.exists(args.checkpoint_dir):
@@ -99,16 +100,23 @@ def train_building():
 
             if args.fp16:
                 with torch.cuda.amp.autocast():
-                    y = model(images)
+                    y, contrastive_loss = model(images)
                     loss = loss_fn(y, target.half())
+                    # contrastive_loss = sum(contrastive_loss)
             else:
-                y = model(images)
-                loss = loss_fn(y, target.squeeze(1))
+                y, contrastive_loss = model(images)
+                contrastive_loss = sum([torch.mean(c) for c in contrastive_loss if not isinstance(c, int)]) * 1e-3
+                loss_main = loss_fn(y, target.squeeze(1))
+                loss = loss_main + contrastive_loss
 
             total_loss += loss.item()
-            if (t + 1) % 100 == 0:
-                print("iter: {}, loss: {}".format(t + 1, total_loss/100))
+            total_loss_main += loss_main.item()
+            total_loss_aux += contrastive_loss.item()
+            if (t + 1) % gap == 0:
+                print("iter: {}, loss_total: {}, loss_main: {}, loss_aux: {}".format(t + 1, total_loss/gap, total_loss_main/gap, total_loss_aux/gap))
                 total_loss = 0.0
+                total_loss_main = 0.0
+                total_loss_aux = 0.0
 
             optimizer.zero_grad()
             if args.fp16:

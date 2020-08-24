@@ -43,6 +43,9 @@ class TestDatasetWithAnnotations(Dataset):
         ann = copy.deepcopy(self.annotations[idx])
         image = Image.open(osp.join(self.root,ann['filename'])).convert('RGB')
         return image
+    def get_image_name(self, idx):
+        ann = copy.deepcopy(self.annotations[idx])
+        return ann['filename']
     @staticmethod
     def collate_fn(batch):
         return (default_collate([b[0] for b in batch]),
