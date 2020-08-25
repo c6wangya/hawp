@@ -39,7 +39,7 @@ class DeformConv2d(nn.Module):
         self.ctl_ks = ctl_ks
         self.n_sample = n_sample
         self.use_contrastive = use_contrastive
-        self.counter = 0
+        self.share_weights = share_weights
         if not self.attn_only:
             self.conv = nn.Conv2d(inc, outc, kernel_size=kernel_size, stride=kernel_size, bias=bias)
         else:
@@ -50,24 +50,27 @@ class DeformConv2d(nn.Module):
         self.p_conv.register_backward_hook(self._set_lr)
 
         # local attn
-        if self.attn:
+        if self.attn and self.n_head > 1 and not self.share_weights:
+            self.query_conv = [nn.Conv2d(inc, inc, kernel_size=1, stride=stride, bias=bias) for i in range(self.n_head)]
+            self.key_conv = [nn.Conv2d(inc, inc, kernel_size=1, stride=stride, bias=bias) for i in range(self.n_head)]
+        elif self.attn:
             self.inc = inc
             self.outc = outc
             self.query_conv = nn.Conv2d(inc, inc, kernel_size=1, stride=stride, bias=bias)
             self.key_conv = nn.Conv2d(inc, inc, kernel_size=1, stride=stride, bias=bias)
-        elif self.attn and self.n_head > 1 and not self.share_weights:
-            self.query_conv = [nn.Conv2d(inc, inc, kernel_size=1, stride=stride, bias=bias) for i in self.n_head]
-            self.key_conv = [nn.Conv2d(inc, inc, kernel_size=1, stride=stride, bias=bias) for i in self.n_head]
-        if self.attn_only:
+        
+        if self.attn_only and self.n_head > 1 and not self.share_weights:
+            self.value_conv = [nn.Conv2d(inc, inc, kernel_size=1, stride=stride, bias=bias) for i in range(self.n_head)]
+        elif self.attn_only:
             self.value_conv = nn.Conv2d(inc, inc, kernel_size=1, stride=stride, bias=bias)
-        elif self.attn_only and self.n_head > 1 and not self.share_weights:
+        else:
+            self.value_conv = nn.Identity()
+        
+        if self.attn_only and self.n_head > 1 and self.share_weights:
             w_head = torch.empty((self.inc // self.n_head, self.n_head, self.inc),requires_grad=True)
             self.w_head = torch.nn.Parameter(w_head)
             torch.nn.init.normal_(w_head, std=0.1/np.sqrt(self.inc))
             self.register_parameter("head_weight",self.w_head)
-            self.value_conv = [nn.Conv2d(inc, inc, kernel_size=1, stride=stride, bias=bias) for i in self.n_head]
-        else:
-            self.value_conv = nn.Identity()
 
         if modulation:
             self.m_conv = nn.Conv2d(inc, kernel_size*kernel_size, kernel_size=3, padding=1, stride=stride)
@@ -83,8 +86,8 @@ class DeformConv2d(nn.Module):
         """ compute local attention map indexed by offset """
         B, C, H, W = x.size()
         if isinstance(self.query_conv, list):
-            q_out = [c(x) for c in self.query_conv]
-            k_out = [c(x) for c in self.key_conv]  # [B, C, H, W]
+            q_out = [c.cuda()(x) for c in self.query_conv]
+            k_out = [c.cuda()(x) for c in self.key_conv]  # [B, C, H, W]
             k_out = [self.compute_x_off(k, offset) for k in k_out]  # [B, C, H, W, k**2]
         else:
             q_out = self.query_conv(x)  # [B, C, H, W]
@@ -116,16 +119,8 @@ class DeformConv2d(nn.Module):
             ks = [k.permute(0, 2, 3, 1, 4) for k in k_out]
             attn_maps = [torch.einsum('bhwmc,bhwck->bhwmk', qs[i], ks[i]) for i in range(self.n_head)]
             attn_maps = [F.softmax(attn_maps[i], dim=-1).permute(0, 3, 1, 2, 4) for i in range(self.n_head)]
-            attn_map = sum(attn_maps)
-            
-            
-            qs = [q_out.permute(0, 2, 3, 1)[:, :, :, i*C//self.n_head:(i+1)*C//self.n_head].unsqueeze(3) for i in range(self.n_head)]
-            ks = [k_out.permute(0, 2, 3, 1, 4)[:, :, :, i*C//self.n_head:(i+1)*C//self.n_head, :] for i in range(self.n_head)]
-            attn_maps = [torch.einsum('bhwmc,bhwck->bhwmk', qs[i], ks[i]) for i in range(self.n_head)]
-            attn_maps = [F.softmax(attn_maps[i], dim=-1).permute(0, 3, 1, 2, 4) for i in range(self.n_head)]
-            x_offset = [x_offset[:, i*C//self.n_head:(i+1)*C//self.n_head, :, :, :] * attn_maps[i] for i in range(self.n_head)]
-            x_offset = torch.stack(x_offset, dim=-1)
-            x_offset = torch.einsum('behwkn,enm->bhwkm', x_offset, self.w_head).permute(0, 4, 1, 2, 3)  # [B, C, H, W, k**2]
+            x_offset = [x_offset[i] * attn_maps[i] for i in range(self.n_head)]
+            x_offset = sum(x_offset)
         return x_offset
 
     def _quantize_offset(self, x, offset):
@@ -280,9 +275,18 @@ class DeformConv2d(nn.Module):
 
         # compute feature map based on a sampled neg offset
         # compute feature map based on offset
-        value = self.value_conv(x)
-        self.counter += 1
-        x_offset = self.compute_x_off(value, offset)
+        if self.share_weights:
+            value = self.value_conv(x)
+            x_offset = self.compute_x_off(value, offset)
+        else:
+            # idt = nn.Identity()
+            # value = idt(x)
+            values = [c.cuda()(x) for c in self.value_conv]
+            x_offset = [self.compute_x_off(v, offset) for v in values]
+
+        # compute attension map
+        if self.attn:
+            x_offset = self.compute_attn(x, x_offset, offset, dim=self.attn_dim)
 
         # compute contrastive loss
         if self.use_contrastive and x.size(3) >= 8:
@@ -290,10 +294,6 @@ class DeformConv2d(nn.Module):
             contrastive_loss = self.compute_contrastive_loss(x, x_offset, x_neg_offset)
         else: 
             contrastive_loss = 0
-        
-        # compute attension map
-        if self.attn:
-            x_offset = self.compute_attn(x, x_offset, offset, dim=self.attn_dim)
 
         # modulation
         if self.modulation:
