@@ -55,14 +55,17 @@ class DeformConv2d(nn.Module):
             self.outc = outc
             self.query_conv = nn.Conv2d(inc, inc, kernel_size=1, stride=stride, bias=bias)
             self.key_conv = nn.Conv2d(inc, inc, kernel_size=1, stride=stride, bias=bias)
+        elif self.attn and self.n_head > 1 and not self.share_weights:
+            self.query_conv = [nn.Conv2d(inc, inc, kernel_size=1, stride=stride, bias=bias) for i in self.n_head]
+            self.key_conv = [nn.Conv2d(inc, inc, kernel_size=1, stride=stride, bias=bias) for i in self.n_head]
         if self.attn_only:
             self.value_conv = nn.Conv2d(inc, inc, kernel_size=1, stride=stride, bias=bias)
+        elif self.attn_only and self.n_head > 1 and not self.share_weights:
             w_head = torch.empty((self.inc // self.n_head, self.n_head, self.inc),requires_grad=True)
             self.w_head = torch.nn.Parameter(w_head)
             torch.nn.init.normal_(w_head, std=0.1/np.sqrt(self.inc))
             self.register_parameter("head_weight",self.w_head)
-        elif self.attn_only and self.n_head > 1 and not self.share_weights:
-            self.value_conv
+            self.value_conv = [nn.Conv2d(inc, inc, kernel_size=1, stride=stride, bias=bias) for i in self.n_head]
         else:
             self.value_conv = nn.Identity()
 
@@ -79,9 +82,14 @@ class DeformConv2d(nn.Module):
     def compute_attn(self, x, x_offset, offset, dim='', share_weights=True):
         """ compute local attention map indexed by offset """
         B, C, H, W = x.size()
-        q_out = self.query_conv(x)  # [B, C, H, W]
-        k_out = self.key_conv(x)  # [B, C, H, W]
-        k_out = self.compute_x_off(k_out, offset)  # [B, C, H, W, k**2]
+        if isinstance(self.query_conv, list):
+            q_out = [c(x) for c in self.query_conv]
+            k_out = [c(x) for c in self.key_conv]  # [B, C, H, W]
+            k_out = [self.compute_x_off(k, offset) for k in k_out]  # [B, C, H, W, k**2]
+        else:
+            q_out = self.query_conv(x)  # [B, C, H, W]
+            k_out = self.key_conv(x)  # [B, C, H, W]
+            k_out = self.compute_x_off(k_out, offset)  # [B, C, H, W, k**2]
         if dim == '':
             # query
             q_out = q_out.view(B, self.inc, H, W, 1)
@@ -89,13 +97,13 @@ class DeformConv2d(nn.Module):
             attn_map = q_out * k_out
             attn_map = F.softmax(attn_map, dim=-1)  # [B, C, H, W, k**2]
             x_offset = x_offset * attn_map
-        elif dim == 'c' and self.n_head == 1:
+        elif self.n_head == 1:
             q_out = q_out.permute(0, 2, 3, 1).unsqueeze(3)  # [B, H, W, 1, C]
             k_out = k_out.permute(0, 2, 3, 1, 4)  # [B, H, W, C, k**2]
             attn_map = torch.einsum('bhwmc,bhwck->bhwmk', q_out, k_out)  # [B, H, W, 1, k**2]
             attn_map = F.softmax(attn_map, dim=-1).permute(0, 3, 1, 2, 4)  # [B, 1, H, W, k**2]
             x_offset = x_offset * attn_map
-        elif dim == 'c' and share_weights:
+        elif self.share_weights:
             qs = [q_out.permute(0, 2, 3, 1)[:, :, :, i*C//self.n_head:(i+1)*C//self.n_head].unsqueeze(3) for i in range(self.n_head)]
             ks = [k_out.permute(0, 2, 3, 1, 4)[:, :, :, i*C//self.n_head:(i+1)*C//self.n_head, :] for i in range(self.n_head)]
             attn_maps = [torch.einsum('bhwmc,bhwck->bhwmk', qs[i], ks[i]) for i in range(self.n_head)]
@@ -103,7 +111,14 @@ class DeformConv2d(nn.Module):
             x_offset = [x_offset[:, i*C//self.n_head:(i+1)*C//self.n_head, :, :, :] * attn_maps[i] for i in range(self.n_head)]
             x_offset = torch.stack(x_offset, dim=-1)
             x_offset = torch.einsum('behwkn,enm->bhwkm', x_offset, self.w_head).permute(0, 4, 1, 2, 3)  # [B, C, H, W, k**2]
-        elif dim == 'c':
+        else:
+            qs = [q.permute(0, 2, 3, 1).unsqueeze(3) for q in q_out]
+            ks = [k.permute(0, 2, 3, 1, 4) for k in k_out]
+            attn_maps = [torch.einsum('bhwmc,bhwck->bhwmk', qs[i], ks[i]) for i in range(self.n_head)]
+            attn_maps = [F.softmax(attn_maps[i], dim=-1).permute(0, 3, 1, 2, 4) for i in range(self.n_head)]
+            attn_map = sum(attn_maps)
+            
+            
             qs = [q_out.permute(0, 2, 3, 1)[:, :, :, i*C//self.n_head:(i+1)*C//self.n_head].unsqueeze(3) for i in range(self.n_head)]
             ks = [k_out.permute(0, 2, 3, 1, 4)[:, :, :, i*C//self.n_head:(i+1)*C//self.n_head, :] for i in range(self.n_head)]
             attn_maps = [torch.einsum('bhwmc,bhwck->bhwmk', qs[i], ks[i]) for i in range(self.n_head)]
