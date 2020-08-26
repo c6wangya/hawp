@@ -33,6 +33,7 @@ def train_building():
                         )
     parser.add_argument("--checkpoint", help="checkpoint to be loaded")
     parser.add_argument("--checkpoint_dir", help="checkpoint dir")
+    parser.add_argument("--checkpoint_gap", default=10000, type=int, help="how many iters to save checkpoint")
     parser.add_argument("--resume_train", action="store_true", help="load checkpoint and resume training")
     parser.add_argument("--fp16", action="store_true", help="training in fp16 mode")
     parser.add_argument("--lr_base", default=1e-5, type=float, help="refine net base learning rate")
@@ -128,7 +129,7 @@ def train_building():
                 loss.backward()
                 optimizer.step()
         
-            if t % 10000 == 0 and t != 0:
+            if t % args.checkpoint_gap == 0 and t != 0:
                 torch.save({
                     'iter': t,
                     'model_state_dict': model.state_dict(),
