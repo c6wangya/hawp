@@ -64,7 +64,7 @@ def train_building():
             params_res.append(v)
         else:
             params_refine.append(v)
-    optimizer = torch.optim.Adam([{"params": params_res, "lr": 3 * args.lr / 10}, {"params": params_refine, "lr": 3 * args.lr}], betas=(0.9, 0.999), weight_decay=0.0005)
+    optimizer = torch.optim.Adam([{"params": params_res, "lr": 3 * args.lr_base / 10}, {"params": params_refine, "lr": 3 * args.lr_base}], betas=(0.9, 0.999), weight_decay=0.0005)
 
     if args.checkpoint and args.resume_train:
         optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
