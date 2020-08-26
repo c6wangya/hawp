@@ -36,6 +36,7 @@ def train_building():
     parser.add_argument("--resume_train", action="store_true", help="load checkpoint and resume training")
     parser.add_argument("--fp16", action="store_true", help="training in fp16 mode")
     parser.add_argument("--lr_base", default=1e-5, type=float, help="refine net base learning rate")
+    parser.add_argument("--lr_gap", default=100, type=int, help="how many iters to print loss information")
     args = parser.parse_args()
     cfg.merge_from_file(args.config_file)
     cfg.merge_from_list(args.opts)
