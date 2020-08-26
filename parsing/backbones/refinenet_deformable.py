@@ -7,14 +7,34 @@ from .deform_conv_v2_cpu import DeformConv2d as DC
 
 class RefineNetDeform(nn.Module):
 
-    def __init__(self, classes_num, pretrained_weights=None, cuda=True, attn=False, attn_only=False, attn_dim='', n_head=1, use_contrastive=False):
+    def __init__(
+            self, 
+            classes_num, 
+            pretrained_weights=None, 
+            cuda=True, 
+            attn=False, 
+            attn_only=False, 
+            attn_dim='', 
+            n_head=1, 
+            use_contrastive=False, 
+            share_weights=True, 
+            attn_bottleneck=False
+        ):
         self.use_cuda_version = cuda
         if cuda:
             DC_module = DCN
             extra_args = {}
         else:
             DC_module = DC
-            extra_args = {'attn': attn, 'attn_only': attn_only, 'attn_dim': attn_dim, 'n_head': n_head, 'use_contrastive': use_contrastive}
+            extra_args = {
+                'attn': attn, 
+                'attn_only': attn_only, 
+                'attn_dim': attn_dim, 
+                'n_head': n_head, 
+                'use_contrastive': use_contrastive, 
+                'share_weights': share_weights, 
+                'attn_bottleneck': attn_bottleneck
+            }
 
         super(RefineNetDeform, self).__init__()
         self.drop = nn.Dropout(p=0.5)

@@ -33,8 +33,11 @@ def train_building():
                         )
     parser.add_argument("--checkpoint", help="checkpoint to be loaded")
     parser.add_argument("--checkpoint_dir", help="checkpoint dir")
+    parser.add_argument("--checkpoint_gap", default=10000, type=int, help="how many iters to save checkpoint")
     parser.add_argument("--resume_train", action="store_true", help="load checkpoint and resume training")
     parser.add_argument("--fp16", action="store_true", help="training in fp16 mode")
+    parser.add_argument("--lr_base", default=1e-5, type=float, help="refine net base learning rate")
+    parser.add_argument("--lr_gap", default=100, type=int, help="how many iters to print loss information")
     args = parser.parse_args()
     cfg.merge_from_file(args.config_file)
     cfg.merge_from_list(args.opts)
@@ -63,7 +66,7 @@ def train_building():
             params_res.append(v)
         else:
             params_refine.append(v)
-    optimizer = torch.optim.Adam([{"params": params_res, "lr": 0.000003}, {"params": params_refine, "lr": 0.00003}], betas=(0.9, 0.999), weight_decay=0.0005)
+    optimizer = torch.optim.Adam([{"params": params_res, "lr": 3 * args.lr_base / 10}, {"params": params_refine, "lr": 3 * args.lr_base}], betas=(0.9, 0.999), weight_decay=0.0005)
 
     if args.checkpoint and args.resume_train:
         optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
@@ -79,7 +82,6 @@ def train_building():
     # loss_fn = torch.nn.MSELoss(reduce=True, size_average=True)
 
     total_loss, total_loss_main, total_loss_aux = 0.0, 0.0, 0.0
-    gap = 100
     t = 0 if not args.resume_train else checkpoint["iter"]
 
     if not os.path.exists(args.checkpoint_dir):
@@ -111,9 +113,9 @@ def train_building():
 
             total_loss += loss.item()
             total_loss_main += loss_main.item()
-            total_loss_aux += contrastive_loss.item()
-            if (t + 1) % gap == 0:
-                print("iter: {}, loss_total: {}, loss_main: {}, loss_aux: {}".format(t + 1, total_loss/gap, total_loss_main/gap, total_loss_aux/gap))
+            total_loss_aux += contrastive_loss.item() if cfg.MODEL.ATTN_USE_CTL else 0
+            if (t + 1) % args.lr_gap == 0:
+                print("iter: {}, loss_total: {}, loss_main: {}, loss_aux: {}".format(t + 1, total_loss/args.lr_gap, total_loss_main/args.lr_gap, total_loss_aux/args.lr_gap))
                 total_loss = 0.0
                 total_loss_main = 0.0
                 total_loss_aux = 0.0
@@ -127,7 +129,7 @@ def train_building():
                 loss.backward()
                 optimizer.step()
         
-            if t % 10000 == 0 and t != 0:
+            if t % args.checkpoint_gap == 0 and t != 0:
                 torch.save({
                     'iter': t,
                     'model_state_dict': model.state_dict(),
