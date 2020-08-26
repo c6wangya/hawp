@@ -81,7 +81,6 @@ def train_building():
     # loss_fn = torch.nn.MSELoss(reduce=True, size_average=True)
 
     total_loss, total_loss_main, total_loss_aux = 0.0, 0.0, 0.0
-    gap = 5
     t = 0 if not args.resume_train else checkpoint["iter"]
 
     if not os.path.exists(args.checkpoint_dir):
@@ -114,8 +113,8 @@ def train_building():
             total_loss += loss.item()
             total_loss_main += loss_main.item()
             total_loss_aux += contrastive_loss.item() if cfg.MODEL.ATTN_USE_CTL else 0
-            if (t + 1) % gap == 0:
-                print("iter: {}, loss_total: {}, loss_main: {}, loss_aux: {}".format(t + 1, total_loss/gap, total_loss_main/gap, total_loss_aux/gap))
+            if (t + 1) % args.lr_gap == 0:
+                print("iter: {}, loss_total: {}, loss_main: {}, loss_aux: {}".format(t + 1, total_loss/args.lr_gap, total_loss_main/args.lr_gap, total_loss_aux/args.lr_gap))
                 total_loss = 0.0
                 total_loss_main = 0.0
                 total_loss_aux = 0.0
