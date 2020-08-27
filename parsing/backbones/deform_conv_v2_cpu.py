@@ -161,7 +161,9 @@ class DeformConv2d(nn.Module):
     def compute_contrastive_offset(self, x, offset):
         ctl_ks = min(self.ctl_ks, x.size(3)-1)
         N = ctl_ks**2
+        # assert not (offset < -1).any() and not (offset > 1).any() 
         qp = self._quantize_offset(x, offset)  # [B, H, W, 72]
+        assert not (qp < 0).any() and not (qp > x.size(3)-1).any() and x.size(3) > 4
 
         p_n = torch.zeros(offset.size(0), N*2, offset.size(2), offset.size(3))
         p_n = self._get_p(p_n, torch.int64, padding=False).permute(0, 2, 3, 1)
@@ -241,7 +243,7 @@ class DeformConv2d(nn.Module):
         l = torch.mean(-torch.log(pos_sim / total), dim=-1)  # [B, H, W, k**2]
         assert not torch.isnan(l).any()
         return l
-        
+
     def compute_x_off(self, x, offset):
         """ compute feature indexed by offset """
         dtype = offset.data.type()
@@ -289,11 +291,13 @@ class DeformConv2d(nn.Module):
 
     def forward(self, x):
         offset = self.p_conv(x)
+        # assert not (offset < -1).any() and not (offset > 1).any() 
         if self.modulation:
             m = torch.sigmoid(self.m_conv(x))
 
         # compute feature map based on offset
         value = self.value_conv(x)
+        assert not torch.isnan(x).any()
         x_offset = self.compute_x_off(value, offset)
         # if self.share_weights:
         #     value = self.value_conv(x)
@@ -361,7 +365,6 @@ class DeformConv2d(nn.Module):
     def _get_p(self, offset, dtype, padding=True):
         N, h, w = offset.size(1)//2, offset.size(2), offset.size(3)
         device = offset.device
-
         # (1, 2N, 1, 1)
         p_n = self._get_p_n(N, dtype, int(N**0.5), padding)
         # (1, 2N, h, w)
