@@ -200,6 +200,15 @@ class DeformConv2d(nn.Module):
             return torch.stack(idx)[:, selected]
         # selected = torch.zeros(tuple(iskeep.shape)[:-1] + (9, ))
         neg_off = torch.zeros(tuple(iskeep.shape)[:-1] + (2*self.n_sample, ))
+        
+        # # accelerated version
+        # B, H, W, _ = iskeep.shape
+        # neg_off = p_n.clone()
+        # neg_off[..., :qp.size(-1)//2][~iskeep] = -1
+        # neg_off[..., qp.size(-1)//2:][~iskeep] = -1
+        
+        # rand_idices = [[[list(torch.randperm(4) + i * 12 + j * 4) for w in range(W)] for h in range(H)] for b in range(B)]
+
         for b in range(iskeep.size(0)):
             for h in range(iskeep.size(1)):
                 for w in range(iskeep.size(1)):
@@ -215,13 +224,17 @@ class DeformConv2d(nn.Module):
             x_pos_offset: [B, C, H, W, 9]
             x_neg_offset: [B, C, H, W, 9]
         """
+        epsilon = 1e-10
         pos_dot_prod = torch.einsum('bchw,bchwn->bhwn', x, x_pos_offset)  # [B, H, W, k**2]
         neg_dot_prod = torch.einsum('bchw,bchwn->bhwn', x, x_neg_offset)  # [B, H, W, k**2]
         x_norm = torch.norm(x, dim=1).unsqueeze(dim=-1)  # [B, H, W, 1]
         pos_norm = torch.norm(x_pos_offset, dim=1)  # [B, H, W, k**2]
+        assert not torch.isnan(x_pos_offset).any() and not torch.isnan(pos_norm).any()
         neg_norm = torch.norm(x_neg_offset, dim=1)  # [B, H, W, k**2]
-        pos_sim = pos_dot_prod / (x_norm + (x_norm == 0).int()) / (pos_norm + (pos_norm == 0).int()) / tao  # [B, H, W, k**2]
-        neg_sim = neg_dot_prod / (x_norm + (x_norm == 0).int()) / (neg_norm + (neg_norm == 0).int()) / tao  # [B, H, W, k**2]
+        pos_sim = pos_dot_prod / (x_norm + epsilon) / (pos_norm + epsilon) / tao  # [B, H, W, k**2]
+        neg_sim = neg_dot_prod / (x_norm + epsilon) / (neg_norm + epsilon) / tao  # [B, H, W, k**2]
+        # pos_sim = pos_dot_prod / (x_norm + (x_norm.detach() == 0).int()) / (pos_norm + (pos_norm.detach() == 0).int()) / tao  # [B, H, W, k**2]
+        # neg_sim = neg_dot_prod / (x_norm + (x_norm.detach() == 0).int()) / (neg_norm + (neg_norm.detach() == 0).int()) / tao  # [B, H, W, k**2]
         pos_sim = torch.exp(pos_sim)  # [B, H, W, k**2]
         neg_sim = torch.exp(neg_sim)  # [B, H, W, k**2]
         total = pos_sim.sum(dim=-1, keepdim=True) + neg_sim.sum(dim=-1, keepdim=True) - pos_sim  # [B, H, W, k**2]
@@ -297,7 +310,8 @@ class DeformConv2d(nn.Module):
         # compute contrastive loss
         if self.use_contrastive and x.size(3) >= 8:
             x_neg_offset = self.compute_contrastive_offset(x, offset)
-            contrastive_loss = self.compute_contrastive_loss(x, x_offset, x_neg_offset)
+            # idt = nn.Identity()
+            contrastive_loss = self.compute_contrastive_loss(x.clone(), x_offset.detach(), x_neg_offset.detach())
         else: 
             contrastive_loss = 0
 
@@ -314,11 +328,9 @@ class DeformConv2d(nn.Module):
             x_offset = self._reshape_x_offset(x_offset, self.kernel_size)
         
         if not self.attn_bottleneck:
-            out = self.conv(x_offset)
-        else: 
-            out = x_offset
+            x_offset = self.conv(x_offset)
 
-        return out, contrastive_loss
+        return x_offset, contrastive_loss
 
     def _get_p_n(self, N, dtype, kernel_size, padding):
         p_n_x, p_n_y = torch.meshgrid(
