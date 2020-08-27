@@ -83,7 +83,7 @@ def test_building():
         # if test_dataset.dataset.filename(i) != 'building-180721-10001.21.27_pos_p655':
         #     continue
         with torch.no_grad():
-            output = model(images.to(device))
+            output, _ = model(images.to(device))
             output = to_device(output,'cpu').squeeze(dim=0)
         
         target = target.squeeze(dim=0)
