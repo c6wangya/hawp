@@ -87,59 +87,60 @@ def train_building():
     if not os.path.exists(args.checkpoint_dir):
         os.makedirs(args.checkpoint_dir)
     
-    for epoch in range(1000):
-        for it, (images, target) in enumerate(train_dataset):
-            images = images.to(device)
-            target = target.to(device).long()
-            
-            # import matplotlib.pyplot as plt
-            # fig = plt.figure(figsize=(8, 16))
-            # fig.add_subplot(1, 2, 1)
-            # plt.imshow(images[0, ...].squeeze().permute(1, 2, 0))
-            # fig.add_subplot(1, 2, 2)
-            # plt.imshow(target[0, ...].squeeze())
-            # plt.show()
+    with torch.autograd.set_detect_anomaly(True):
+        for epoch in range(1000):
+            for it, (images, target) in enumerate(train_dataset):
+                images = images.to(device)
+                target = target.to(device).long()
+                
+                # import matplotlib.pyplot as plt
+                # fig = plt.figure(figsize=(8, 16))
+                # fig.add_subplot(1, 2, 1)
+                # plt.imshow(images[0, ...].squeeze().permute(1, 2, 0))
+                # fig.add_subplot(1, 2, 2)
+                # plt.imshow(target[0, ...].squeeze())
+                # plt.show()
 
-            if args.fp16:
-                with torch.cuda.amp.autocast():
+                if args.fp16:
+                    with torch.cuda.amp.autocast():
+                        y, contrastive_loss = model(images)
+                        loss = loss_fn(y, target.half())
+                        # contrastive_loss = sum(contrastive_loss)
+                else:
                     y, contrastive_loss = model(images)
-                    loss = loss_fn(y, target.half())
-                    # contrastive_loss = sum(contrastive_loss)
-            else:
-                y, contrastive_loss = model(images)
-                contrastive_loss = sum([torch.mean(c) for c in contrastive_loss if not isinstance(c, int)]) * 1e-3
-                loss_main = loss_fn(y, target.squeeze(1))
-                loss = loss_main + contrastive_loss
+                    contrastive_loss = sum([torch.mean(c) for c in contrastive_loss if not isinstance(c, int)]) * 1e-3
+                    loss_main = loss_fn(y, target.squeeze(1))
+                    loss = loss_main + contrastive_loss
 
-            total_loss += loss.item()
-            total_loss_main += loss_main.item()
-            total_loss_aux += contrastive_loss.item() if cfg.MODEL.ATTN_USE_CTL else 0
-            if (t + 1) % args.lr_gap == 0:
-                print("iter: {}, loss_total: {}, loss_main: {}, loss_aux: {}".format(t + 1, total_loss/args.lr_gap, total_loss_main/args.lr_gap, total_loss_aux/args.lr_gap))
-                total_loss = 0.0
-                total_loss_main = 0.0
-                total_loss_aux = 0.0
+                total_loss += loss.item()
+                total_loss_main += loss_main.item()
+                total_loss_aux += contrastive_loss.item() if cfg.MODEL.ATTN_USE_CTL else 0
+                if (t + 1) % args.lr_gap == 0:
+                    print("iter: {}, loss_total: {}, loss_main: {}, loss_aux: {}".format(t + 1, total_loss/args.lr_gap, total_loss_main/args.lr_gap, total_loss_aux/args.lr_gap))
+                    total_loss = 0.0
+                    total_loss_main = 0.0
+                    total_loss_aux = 0.0
 
-            optimizer.zero_grad()
-            if args.fp16:
-                scaler.scale(loss).backward()
-                scaler.step(optimizer)
-                scaler.update()
-            else:
-                loss.backward()
-                optimizer.step()
-        
-            if t % args.checkpoint_gap == 0 and t != 0:
-                torch.save({
-                    'iter': t,
-                    'model_state_dict': model.state_dict(),
-                    'optimizer_state_dict': optimizer.state_dict(),
-                    # 'scaler_state_dict': scaler.state_dict(),
-                    'loss': loss,
-                    },
-                    "{}/checkpoint_finetune_iter_{}".format(args.checkpoint_dir, t)
-                )
-            t += 1
+                optimizer.zero_grad()
+                if args.fp16:
+                    scaler.scale(loss).backward()
+                    scaler.step(optimizer)
+                    scaler.update()
+                else:
+                    loss.backward()
+                    optimizer.step()
+            
+                if t % args.checkpoint_gap == 0 and t != 0:
+                    torch.save({
+                        'iter': t,
+                        'model_state_dict': model.state_dict(),
+                        'optimizer_state_dict': optimizer.state_dict(),
+                        # 'scaler_state_dict': scaler.state_dict(),
+                        'loss': loss,
+                        },
+                        "{}/checkpoint_finetune_iter_{}".format(args.checkpoint_dir, t)
+                    )
+                t += 1
 
 
 if __name__ == "__main__":

@@ -41,7 +41,8 @@ def build_rf(cfg):
             n_head=cfg.MODEL.ATTN_N_HEAD, 
             use_contrastive=cfg.MODEL.ATTN_USE_CTL,
             share_weights=cfg.MODEL.ATTN_SHARE_W, 
-            attn_bottleneck=cfg.MODEL.ATTN_BN
+            attn_bottleneck=cfg.MODEL.ATTN_BN, 
+            resoff=cfg.MODEL.RES_OFF
     )
     model.out_feature_channels = 2
     return model
