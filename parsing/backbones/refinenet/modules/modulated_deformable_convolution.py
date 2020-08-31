@@ -107,7 +107,7 @@ class ModulatedDeformableConv2dResoff(nn.Module):
                                           stride=self.stride,
                                           padding=self.padding,
                                           bias=False)
-        if self.feature_dept:
+        if not self.feature_dept:
             self.conv_offset = nn.Conv2d(2 * self.kernel_size[0] * self.kernel_size[1], 
                                          self.deformable_groups * 2 * self.kernel_size[0] * self.kernel_size[1], 
                                          kernel_size=self.kernel_size, 
