@@ -227,12 +227,14 @@ class DeformConv2d(nn.Module):
             x_neg_offset: [B, C, H, W, 9]
         """
         epsilon = 1e-10
-        pos_dot_prod = torch.einsum('bchw,bchwn->bhwn', x, x_pos_offset)  # [B, H, W, k**2]
-        neg_dot_prod = torch.einsum('bchw,bchwn->bhwn', x, x_neg_offset)  # [B, H, W, k**2]
-        x_norm = torch.norm(x, dim=1).unsqueeze(dim=-1)  # [B, H, W, 1]
-        pos_norm = torch.norm(x_pos_offset, dim=1)  # [B, H, W, k**2]
-        assert not torch.isnan(x_pos_offset).any() and not torch.isnan(pos_norm).any()
-        neg_norm = torch.norm(x_neg_offset, dim=1)  # [B, H, W, k**2]
+        pos_dot_prod = torch.einsum('bchw,bchwn->bhwn', x.detach(), x_pos_offset)  # [B, H, W, k**2]
+        neg_dot_prod = torch.einsum('bchw,bchwn->bhwn', x.detach(), x_neg_offset)  # [B, H, W, k**2]
+        x_norm = torch.norm(x.detach(), dim=1).unsqueeze(dim=-1)  # [B, H, W, 1]
+        assert not torch.isnan(x_pos_offset).any() and not torch.isnan(x_pos_offset).any()
+        # print("pos offset: {}".format(x_pos_offset[0, 0, 0, :]))
+        # print("neg offset: {}".format(x_neg_offset[0, 0, 0, :]))
+        pos_norm = torch.norm(x_pos_offset.detach(), dim=1)  # [B, H, W, k**2]
+        neg_norm = torch.norm(x_neg_offset.detach(), dim=1)  # [B, H, W, k**2]
         pos_sim = pos_dot_prod / (x_norm + epsilon) / (pos_norm + epsilon) / tao  # [B, H, W, k**2]
         neg_sim = neg_dot_prod / (x_norm + epsilon) / (neg_norm + epsilon) / tao  # [B, H, W, k**2]
         # pos_sim = pos_dot_prod / (x_norm + (x_norm.detach() == 0).int()) / (pos_norm + (pos_norm.detach() == 0).int()) / tao  # [B, H, W, k**2]
@@ -315,7 +317,7 @@ class DeformConv2d(nn.Module):
         if self.use_contrastive and x.size(3) >= 8:
             x_neg_offset = self.compute_contrastive_offset(x, offset)
             # idt = nn.Identity()
-            contrastive_loss = self.compute_contrastive_loss(x.clone(), x_offset.detach(), x_neg_offset.detach())
+            contrastive_loss = self.compute_contrastive_loss(x, x_offset, x_neg_offset)
         else: 
             contrastive_loss = 0
 
