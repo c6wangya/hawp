@@ -38,6 +38,7 @@ def train_building():
     parser.add_argument("--fp16", action="store_true", help="training in fp16 mode")
     parser.add_argument("--lr_base", default=1e-5, type=float, help="refine net base learning rate")
     parser.add_argument("--lr_gap", default=100, type=int, help="how many iters to print loss information")
+    parser.add_argument("--w_ctl", default=1, type=float, help="contrastive loss weight")
     args = parser.parse_args()
     cfg.merge_from_file(args.config_file)
     cfg.merge_from_list(args.opts)
@@ -110,7 +111,7 @@ def train_building():
                     y, contrastive_loss = model(images)
                     contrastive_loss = sum([torch.mean(c) for c in contrastive_loss if not isinstance(c, int)]) * 1e-3
                     loss_main = loss_fn(y, target.squeeze(1))
-                    loss = loss_main + contrastive_loss
+                    loss = loss_main + contrastive_loss * args.w_ctl
 
                 total_loss += loss.item()
                 total_loss_main += loss_main.item()
