@@ -21,7 +21,8 @@ class RefineNetDeform(nn.Module):
             share_weights=True, 
             attn_bottleneck=False,
             resoff=False,
-            feature_dept=True
+            feature_dept=True, 
+            tao=1
         ):
         self.use_cuda_version = cuda
         self.resoff = resoff
@@ -40,7 +41,8 @@ class RefineNetDeform(nn.Module):
                 'n_head': n_head, 
                 'use_contrastive': use_contrastive, 
                 'share_weights': share_weights, 
-                'attn_bottleneck': attn_bottleneck
+                'attn_bottleneck': attn_bottleneck, 
+                'tao': tao
             }
 
         super(RefineNetDeform, self).__init__()

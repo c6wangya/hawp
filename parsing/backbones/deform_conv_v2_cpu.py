@@ -21,7 +21,8 @@ class DeformConv2d(nn.Module):
             n_sample=9, 
             use_contrastive=False,
             share_weights=True, 
-            attn_bottleneck=False
+            attn_bottleneck=False, 
+            tao=1
         ):
         """
         Args:
@@ -42,6 +43,7 @@ class DeformConv2d(nn.Module):
         self.use_contrastive = use_contrastive
         self.share_weights = share_weights
         self.attn_bottleneck = attn_bottleneck
+        self.tao = tao
         if not self.attn_only and not self.attn_bottleneck:
             self.conv = nn.Conv2d(inc, outc, kernel_size=kernel_size, stride=kernel_size, bias=bias)
         elif not self.attn_bottleneck:
@@ -221,7 +223,7 @@ class DeformConv2d(nn.Module):
         # x_neg_off = self._get_x_q(x, neg_off.type(torch.int64).to(x.device), self.n_sample)
         return x_neg_off
 
-    def compute_contrastive_loss(self, x, x_pos_offset, x_neg_offset, tao=0.1):
+    def compute_contrastive_loss(self, x, x_pos_offset, x_neg_offset):
         """ x: [B, C, H, W]
             x_pos_offset: [B, C, H, W, 9]
             x_neg_offset: [B, C, H, W, 9]
@@ -235,8 +237,8 @@ class DeformConv2d(nn.Module):
         # print("neg offset: {}".format(x_neg_offset[0, 0, 0, :]))
         pos_norm = torch.norm(x_pos_offset.detach(), dim=1)  # [B, H, W, k**2]
         neg_norm = torch.norm(x_neg_offset.detach(), dim=1)  # [B, H, W, k**2]
-        pos_sim = pos_dot_prod / (x_norm + epsilon) / (pos_norm + epsilon) / tao  # [B, H, W, k**2]
-        neg_sim = neg_dot_prod / (x_norm + epsilon) / (neg_norm + epsilon) / tao  # [B, H, W, k**2]
+        pos_sim = pos_dot_prod / (x_norm + epsilon) / (pos_norm + epsilon) / self.tao  # [B, H, W, k**2]
+        neg_sim = neg_dot_prod / (x_norm + epsilon) / (neg_norm + epsilon) / self.tao  # [B, H, W, k**2]
         # pos_sim = pos_dot_prod / (x_norm + (x_norm.detach() == 0).int()) / (pos_norm + (pos_norm.detach() == 0).int()) / tao  # [B, H, W, k**2]
         # neg_sim = neg_dot_prod / (x_norm + (x_norm.detach() == 0).int()) / (neg_norm + (neg_norm.detach() == 0).int()) / tao  # [B, H, W, k**2]
         pos_sim = torch.exp(pos_sim)  # [B, H, W, k**2]

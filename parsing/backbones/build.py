@@ -43,7 +43,8 @@ def build_rf(cfg):
             share_weights=cfg.MODEL.ATTN_SHARE_W, 
             attn_bottleneck=cfg.MODEL.ATTN_BN, 
             resoff=cfg.MODEL.RES_OFF, 
-            feature_dept=cfg.MODEL.RES_OFF_DEPT
+            feature_dept=cfg.MODEL.RES_OFF_DEPT, 
+            tao=cfg.MODEL.CTL_TAO
     )
     model.out_feature_channels = 2
     return model
