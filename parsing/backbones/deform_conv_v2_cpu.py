@@ -22,7 +22,8 @@ class DeformConv2d(nn.Module):
             use_contrastive=False,
             share_weights=True, 
             attn_bottleneck=False, 
-            tao=1
+            tao=1, 
+            detach_neg=True
         ):
         """
         Args:
@@ -44,6 +45,7 @@ class DeformConv2d(nn.Module):
         self.share_weights = share_weights
         self.attn_bottleneck = attn_bottleneck
         self.tao = tao
+        self.detach_neg = detach_neg
         if not self.attn_only and not self.attn_bottleneck:
             self.conv = nn.Conv2d(inc, outc, kernel_size=kernel_size, stride=kernel_size, bias=bias)
         elif not self.attn_bottleneck:
@@ -243,7 +245,12 @@ class DeformConv2d(nn.Module):
         # neg_sim = neg_dot_prod / (x_norm + (x_norm.detach() == 0).int()) / (neg_norm + (neg_norm.detach() == 0).int()) / tao  # [B, H, W, k**2]
         pos_sim = torch.exp(pos_sim)  # [B, H, W, k**2]
         neg_sim = torch.exp(neg_sim)  # [B, H, W, k**2]
-        total = pos_sim.sum(dim=-1, keepdim=True) + neg_sim.sum(dim=-1, keepdim=True) - pos_sim  # [B, H, W, k**2]
+        total = pos_sim.sum(dim=-1, keepdim=True)  # [B, H, W, k**2]
+        if self.detach_neg:
+            total = total + neg_sim.sum(dim=-1, keepdim=True).detach()
+        else: 
+            total = total + neg_sim.sum(dim=-1, keepdim=True)
+        # total = pos_sim.sum(dim=-1, keepdim=True) + neg_sim.sum(dim=-1, keepdim=True) - pos_sim  # [B, H, W, k**2]
         l = torch.mean(-torch.log(pos_sim / total), dim=-1)  # [B, H, W, k**2]
         assert not torch.isnan(l).any()
         return l
